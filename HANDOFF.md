@@ -26,31 +26,38 @@ merged into `main`** (build + lint verified green). What's on `main`:
 - **Env** — `.env.local` has Supabase public vars; `.env.example` documents all
   three vars; `.env` (TMDB key, never read) is present and gitignored.
 
-### Done since the foundation session
+### Done since the foundation session (all merged to `main`, build + lint green)
 
-- ✅ **Build + lint verified** green on `main`.
 - ✅ **`middleware` → `proxy` rename** (Next 16 convention; deprecation warning gone).
-- ✅ **Auth** — `/login`, `/auth/confirm`, sign-out, Home stub (merged to `main`).
-  ⚠️ **Runtime-untested**: needs the owner to (a) turn Supabase "Confirm email"
-  OFF (Auth → Providers → Email) for a smooth first-run sign-up, and (b) actually
-  sign up/in once against the live project. Not yet done.
+- ✅ **Auth** — `/login`, `/auth/confirm`, sign-out, Home stub. **Runtime-tested** ✅
+  (Confirm-email turned OFF; sign up / out / in verified against the live project).
+- ✅ **API routes** (`src/app/api/**`): `GET /api/search?q=` (TMDB+AniList merged),
+  `POST /api/titles` (fetch details → upsert `titles`+`episodes` → upsert
+  `user_titles`), `PATCH /api/titles/:id/status`, `POST`/`DELETE
+  /api/episodes/:id/watch`. Shared `requireUser()` guard in `src/lib/api/auth.ts`;
+  all 401 without a session. Response shapes documented in the code.
+- ✅ **PWA icons** — `public/icon-{192,512,512-maskable}.png` + `scripts/generate-icons.py`
+  (Pillow, regenerable); manifest updated with `any` + `maskable` entries.
+- 🟡 **Nightly air-date cron — AUTHORED, NOT DEPLOYED.** Files exist under
+  `supabase/`: `functions/refresh-air-dates/index.ts` (Deno), a pg_cron
+  scheduling migration, and a README with a deploy checklist. **Nothing is live
+  yet** — deploying needs owner approval + secrets (see "Cron deploy" below).
+  Note: `supabase/functions/**` is excluded from the app's tsc/eslint (Deno runtime).
 
 ### NOT yet done — this is the resume list
 
-1. **API routes** (`src/app/api/…`):
-   - `search?q=` → merge `searchTv` + `searchAnime`.
-   - add title → call `getTvTitle`/`getAnimeTitle`, upsert `titles` + `episodes`,
-     create a `user_titles` row with the chosen status.
-   - mark / unmark episode → insert/delete `watched_episodes`.
-   - set status → update `user_titles.status`.
-2. **Screens** (Bold UI, Framer Motion): Home (currently-watching cards + one-tap
+1. **Screens** (Bold UI, Framer Motion): Home (currently-watching cards + one-tap
    mark-watched + undo toast + finale guard), TV & Anime tabs (poster grids split
    into Watching/Watchlist/Completed/DNF, DNF muted), Watchlist, Search. Bottom
-   tab nav. Reference prototype behavior in `context.md` / memory.
-3. **Nightly air-date cron** — Supabase Edge Function + pg_cron to refresh
-   `titles.next_episode_air_date` / `next_episode_label` (+ new episode rows) for
-   running titles.
-4. **PWA icons** — generate 192/512 PNG icons, add to manifest.
+   tab nav. Build against the API routes above. Reference prototype behavior in
+   `context.md` / memory.
+2. **Deploy the cron** (see checklist in
+   `supabase/functions/refresh-air-dates/README.md`): set `TMDB_API_KEY` secret,
+   `supabase functions deploy refresh-air-dates`, smoke-test with a manual POST,
+   fill the migration placeholders (`ermhfiofisjsrniccqlv` + service-role key, or
+   the Vault variant), enable `pg_cron`/`pg_net`, apply the migration, run the
+   Supabase advisors. Also verify the Edge Function's inferred column names match
+   the live schema before scheduling.
 
 ## How to run
 
