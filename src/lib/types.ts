@@ -34,6 +34,15 @@ export interface NormalizedEpisode {
   runtime?: number | null;
 }
 
+// Creator/cast info for the title detail screen. Fetched on demand straight
+// from the provider (not stored in the DB — see lib/tmdb.ts and
+// lib/anilist.ts), so a missing or malformed credits response should map to
+// empty arrays rather than throw.
+export interface TitleCredits {
+  creators: string[];
+  cast: { name: string; role?: string | null; imageUrl?: string | null }[];
+}
+
 export interface SearchResult {
   source: DataSource;
   sourceId: string;

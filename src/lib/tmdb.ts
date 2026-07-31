@@ -3,6 +3,7 @@ import type {
   NormalizedEpisode,
   NormalizedTitle,
   SearchResult,
+  TitleCredits,
 } from "@/lib/types";
 
 // TMDB client (TV shows/movies). Server-only — uses the API Read Access Token
@@ -58,6 +59,7 @@ interface TmdbTv {
   status: string;
   number_of_episodes: number | null;
   seasons: { season_number: number; episode_count: number }[];
+  created_by: { name: string }[];
   next_episode_to_air: {
     air_date: string | null;
     season_number: number;
@@ -73,6 +75,15 @@ interface TmdbEpisode {
   air_date: string | null;
   still_path: string | null;
   runtime: number | null;
+}
+
+interface TmdbCredits {
+  cast: {
+    name: string;
+    character: string | null;
+    profile_path: string | null;
+    order: number;
+  }[];
 }
 
 const RUNNING_STATUSES = ["Returning Series", "In Production", "Planned"];
@@ -144,4 +155,27 @@ export async function getTvTitle(
   }
 
   return { title, episodes };
+}
+
+// Creators + top cast for the detail screen. Fetched separately (not baked
+// into getTvTitle) since it's only needed when a user opens a title's detail
+// page, not on every add/search. `append_to_response=credits` gets both
+// created_by and the cast list in one request.
+export async function getTvCredits(id: string): Promise<TitleCredits> {
+  const tv = await tmdb<TmdbTv & { credits?: TmdbCredits }>(`/tv/${id}`, {
+    append_to_response: "credits",
+  });
+
+  const creators = (tv.created_by ?? []).map((c) => c.name);
+  const cast = (tv.credits?.cast ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 10)
+    .map((c) => ({
+      name: c.name,
+      role: c.character,
+      imageUrl: img(c.profile_path, "w185"),
+    }));
+
+  return { creators, cast };
 }

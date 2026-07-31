@@ -3,6 +3,7 @@ import type {
   NormalizedEpisode,
   NormalizedTitle,
   SearchResult,
+  TitleCredits,
 } from "@/lib/types";
 
 // AniList client (anime). Server-only. Public GraphQL API — no key required.
@@ -76,6 +77,28 @@ interface AniDetailMedia {
 
 const RUNNING_STATUSES = ["RELEASING", "NOT_YET_RELEASED", "HIATUS"];
 
+// Roles AniList uses for the person who originated/directed the show — the
+// closest equivalent to TMDB's created_by.
+const CREATOR_ROLES = ["director", "original creator", "creator", "series composition"];
+
+interface AniStaffEdge {
+  role: string;
+  node: { name: { full: string | null } };
+}
+
+interface AniCharacterEdge {
+  node: { name: { full: string | null }; image: { large: string | null } | null };
+  voiceActors: {
+    name: { full: string | null };
+    image: { large: string | null } | null;
+  }[];
+}
+
+interface AniCreditsMedia {
+  staff: { edges: AniStaffEdge[] };
+  characters: { edges: AniCharacterEdge[] };
+}
+
 function pickTitle(t: AniTitle): string {
   return t.english || t.romaji || t.native || "Untitled";
 }
@@ -107,6 +130,21 @@ query ($id: Int) {
     startDate { year month day }
     nextAiringEpisode { airingAt episode }
     airingSchedule(perPage: 500) { nodes { episode airingAt } }
+  }
+}`;
+
+const CREDITS_QUERY = `
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    staff(perPage: 10) {
+      edges { role node { name { full } } }
+    }
+    characters(perPage: 10, sort: ROLE) {
+      edges {
+        node { name { full } image { large } }
+        voiceActors(language: JAPANESE) { name { full } image { large } }
+      }
+    }
   }
 }`;
 
@@ -188,4 +226,36 @@ export async function getAnimeTitle(
   }
 
   return { title, episodes };
+}
+
+// Creators + top cast (voice actors) for the detail screen. Fetched
+// separately from getAnimeTitle since it's only needed on the detail page.
+// AniList has no single "creator" field — staff roles vary by show, so we
+// match against a small set of role strings that map to what TMDB calls
+// created_by; if none match, creators is just empty (never throw).
+export async function getAnimeCredits(id: string): Promise<TitleCredits> {
+  const data = await anilist<{ Media: AniCreditsMedia }>(CREDITS_QUERY, {
+    id: Number(id),
+  });
+  const media = data?.Media;
+  if (!media) return { creators: [], cast: [] };
+
+  const creators = (media.staff?.edges ?? [])
+    .filter((e) => CREATOR_ROLES.includes(e.role?.toLowerCase() ?? ""))
+    .map((e) => e.node.name.full)
+    .filter((name): name is string => Boolean(name));
+
+  // Person-centric to match TMDB's shape: name = the actor, role = the
+  // character they voice. Falls back to the character itself when AniList
+  // has no voice actor on file (e.g. a not-yet-cast role).
+  const cast = (media.characters?.edges ?? []).map((e) => {
+    const va = e.voiceActors?.[0];
+    return {
+      name: va?.name.full ?? e.node.name.full ?? "Unknown",
+      role: va ? e.node.name.full : null,
+      imageUrl: va?.image?.large ?? e.node.image?.large ?? null,
+    };
+  });
+
+  return { creators, cast };
 }
