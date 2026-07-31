@@ -99,8 +99,9 @@ off in the dashboard for a one-person app — Claude can't toggle it; ask the us
 Remote: `github.com/anshu-ravi/tv-tracker`. Feature work goes on `feat/*`
 branches off `main`; follow the user-level **`git-workflow`** skill for branch
 names, small Conventional-Commit blocks, and PR bodies. Reminder: **no Claude
-attribution** anywhere in the history (see Hard rules). Current in-progress
-branch: `feat/app-foundation`.
+attribution** anywhere in the history (see Hard rules). The foundation, the
+`middleware`→`proxy` rename, and auth are merged into `main`; new work starts
+from fresh `feat/*` branches off `main`.
 
 ## Working agreements
 

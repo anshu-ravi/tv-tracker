@@ -8,44 +8,49 @@ _Written 2026-07-31, end of the foundation session._
 ## Where we are
 
 Product scope and the **Bold** design language are locked (see `context.md`).
-Supabase project + schema + RLS are live. The Next.js app is scaffolded and the
-**foundation layer is written** on branch `feat/app-foundation` (not yet merged):
+Supabase project + schema + RLS are live. The **foundation and auth are now
+merged into `main`** (build + lint verified green). What's on `main`:
 
 - **Design system** — `src/app/globals.css` (Bold tokens: paper/ink/acid, hard
   shadows, display type, hairline grid) + `src/app/layout.tsx` (Archivo +
   Archivo Black fonts, PWA metadata) + `public/manifest.webmanifest`.
 - **Supabase wiring** — `src/lib/supabase/{client,server,middleware}.ts` and
-  `src/middleware.ts` (session refresh + redirect-to-`/login` gate).
+  `src/proxy.ts` (Next 16's renamed "middleware"; session refresh +
+  redirect-to-`/login` gate).
+- **Auth** — `/login` (Bold sign-in + first-run create-account, server
+  actions), `/auth/confirm` (email-OTP link handler), sign-out action, and an
+  authenticated Home stub (`src/app/page.tsx`) that greets the user + signs out.
 - **Data clients** — `src/lib/types.ts` (normalized shapes), `src/lib/tmdb.ts`
   (TV search + episodes, bearer auth), `src/lib/anilist.ts` (anime search +
   airing schedule, GraphQL).
 - **Env** — `.env.local` has Supabase public vars; `.env.example` documents all
   three vars; `.env` (TMDB key, never read) is present and gitignored.
 
+### Done since the foundation session
+
+- ✅ **Build + lint verified** green on `main`.
+- ✅ **`middleware` → `proxy` rename** (Next 16 convention; deprecation warning gone).
+- ✅ **Auth** — `/login`, `/auth/confirm`, sign-out, Home stub (merged to `main`).
+  ⚠️ **Runtime-untested**: needs the owner to (a) turn Supabase "Confirm email"
+  OFF (Auth → Providers → Email) for a smooth first-run sign-up, and (b) actually
+  sign up/in once against the live project. Not yet done.
+
 ### NOT yet done — this is the resume list
 
-1. **Verify it builds.** No `npm run build` / lint has been run against the
-   foundation yet. Do this first; watch for: `server-only` resolving, Tailwind v4
-   token usage, Next 16 async `cookies()`/Promise `params`, and any `no-explicit-any`
-   lint. Fix before adding more.
-2. **Auth** — email/password (single user). Build `/login` (sign-in + first-run
-   sign-up), a sign-out action, and confirm the middleware gate works. The single
-   account may need Supabase's "Confirm email" toggled off (Auth → Providers →
-   Email) — Claude can't change that setting via tooling; ask the user.
-3. **API routes** (`src/app/api/…`):
+1. **API routes** (`src/app/api/…`):
    - `search?q=` → merge `searchTv` + `searchAnime`.
    - add title → call `getTvTitle`/`getAnimeTitle`, upsert `titles` + `episodes`,
      create a `user_titles` row with the chosen status.
    - mark / unmark episode → insert/delete `watched_episodes`.
    - set status → update `user_titles.status`.
-4. **Screens** (Bold UI, Framer Motion): Home (currently-watching cards + one-tap
+2. **Screens** (Bold UI, Framer Motion): Home (currently-watching cards + one-tap
    mark-watched + undo toast + finale guard), TV & Anime tabs (poster grids split
    into Watching/Watchlist/Completed/DNF, DNF muted), Watchlist, Search. Bottom
    tab nav. Reference prototype behavior in `context.md` / memory.
-5. **Nightly air-date cron** — Supabase Edge Function + pg_cron to refresh
+3. **Nightly air-date cron** — Supabase Edge Function + pg_cron to refresh
    `titles.next_episode_air_date` / `next_episode_label` (+ new episode rows) for
    running titles.
-6. **PWA icons** — generate 192/512 PNG icons, add to manifest.
+4. **PWA icons** — generate 192/512 PNG icons, add to manifest.
 
 ## How to run
 
