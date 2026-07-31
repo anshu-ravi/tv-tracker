@@ -2,8 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAnimeCredits } from "@/lib/anilist";
 import { getTvCredits } from "@/lib/tmdb";
-import EpisodeTick from "@/components/EpisodeTick";
-import SeasonControls from "@/components/SeasonControls";
+import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import type { DataSource, MediaType, TitleCredits, WatchStatus } from "@/lib/types";
 
 // --- Row shapes for the untyped Supabase client -----------------------------
@@ -109,15 +108,22 @@ export default async function TitleDetailPage({
     console.error("Failed to fetch credits:", err);
   }
 
-  // Group episodes by season, preserving the query's season/episode order.
+  // Group episodes by season, preserving the query's season/episode order,
+  // and shape each row down to what the client EpisodeSection needs (it
+  // formats dates itself so this stays plain data, no server-only bits).
   const seasonNumbers = Array.from(new Set(episodes.map((e) => e.season_number)));
-  const episodesBySeason = new Map<number, EpisodeRow[]>();
-  for (const num of seasonNumbers) {
-    episodesBySeason.set(
-      num,
-      episodes.filter((e) => e.season_number === num),
-    );
-  }
+  const seasons: SeasonGroup[] = seasonNumbers.map((seasonNumber) => ({
+    seasonNumber,
+    episodes: episodes
+      .filter((e) => e.season_number === seasonNumber)
+      .map((e) => ({
+        id: e.id,
+        episodeNumber: e.episode_number,
+        absoluteNumber: e.absolute_number,
+        name: e.name,
+        airLabel: formatDate(e.air_date),
+      })),
+  }));
 
   const year = title.first_air_date ? title.first_air_date.slice(0, 4) : null;
   const nextAirLabel = formatDate(title.next_episode_air_date);
@@ -205,63 +211,12 @@ export default async function TitleDetailPage({
       <div className="mt-6 px-4">
         <h2 className="display text-xl">Episodes</h2>
 
-        {seasonNumbers.length === 0 ? (
-          <p className="card-bold mt-3 px-4 py-6 text-center text-sm text-ink-soft">
-            No episode data yet.
-          </p>
-        ) : (
-          seasonNumbers.map((seasonNumber) => {
-            const seasonEpisodes = episodesBySeason.get(seasonNumber) ?? [];
-            const allWatched =
-              seasonEpisodes.length > 0 &&
-              seasonEpisodes.every((e) => watchedIds.has(e.id));
-
-            return (
-              <section key={seasonNumber} className="mt-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="display text-base">
-                    {title.media_type === "anime" ? "Episodes" : `Season ${seasonNumber}`}
-                  </h3>
-                  <SeasonControls
-                    titleId={title.id}
-                    seasonNumber={seasonNumber}
-                    allWatched={allWatched}
-                  />
-                </div>
-
-                <ul className="card-bold divide-y-[3px] divide-ink p-0">
-                  {seasonEpisodes.map((ep) => {
-                    const epLabel =
-                      title.media_type === "anime"
-                        ? `E${ep.absolute_number ?? ep.episode_number}`
-                        : `E${ep.episode_number}`;
-                    const airLabel = formatDate(ep.air_date);
-                    return (
-                      <li
-                        key={ep.id}
-                        className="flex items-center gap-3 px-3 py-2"
-                      >
-                        <EpisodeTick
-                          episodeId={ep.id}
-                          initiallyWatched={watchedIds.has(ep.id)}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold uppercase tracking-wide">
-                            {epLabel}
-                            {ep.name ? ` · ${ep.name}` : ""}
-                          </p>
-                          {airLabel && (
-                            <p className="text-[10px] text-ink-soft">{airLabel}</p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            );
-          })
-        )}
+        <EpisodeSection
+          titleId={title.id}
+          mediaType={title.media_type}
+          seasons={seasons}
+          initialWatchedIds={Array.from(watchedIds)}
+        />
       </div>
     </div>
   );
