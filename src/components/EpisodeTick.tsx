@@ -1,44 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-
-// One episode row's tick control. Optimistic: flips immediately, calls the
-// existing per-episode watch endpoint, then router.refresh() to pull the
-// real server state (mirrors TitleActions' pattern). Reverts on failure.
+// One episode row's tick control. Fully controlled by the parent
+// (EpisodeSection) — no local watched state — so it can never drift from a
+// bulk "mark season done" action elsewhere on the page.
 export default function EpisodeTick({
-  episodeId,
-  initiallyWatched,
+  watched,
+  pending,
+  onToggle,
 }: {
-  episodeId: string;
-  initiallyWatched: boolean;
+  watched: boolean;
+  pending: boolean;
+  onToggle: () => void;
 }) {
-  const router = useRouter();
-  const [watched, setWatched] = useState(initiallyWatched);
-  const [pending, setPending] = useState(false);
-
-  async function toggle() {
-    if (pending) return;
-    const next = !watched;
-    setWatched(next);
-    setPending(true);
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/watch`, {
-        method: next ? "POST" : "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to update episode");
-      router.refresh();
-    } catch {
-      setWatched(!next); // revert the optimistic flip
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={onToggle}
       disabled={pending}
       aria-pressed={watched}
       aria-label={watched ? "Mark episode unwatched" : "Mark episode watched"}
