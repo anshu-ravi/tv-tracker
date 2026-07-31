@@ -9,7 +9,7 @@ const TABS = [
   { href: "/", label: "Home" },
   { href: "/tv", label: "TV" },
   { href: "/anime", label: "Anime" },
-  { href: "/watchlist", label: "List" },
+  { href: "/watchlist", label: "Watchlist" },
   { href: "/search", label: "Search" },
 ] as const;
 
@@ -29,7 +29,7 @@ export default function BottomNav() {
             <li key={tab.href} className="flex-1">
               <Link
                 href={tab.href}
-                className={`flex flex-col items-center gap-0.5 border-r-[3px] border-ink py-2.5 text-[11px] font-bold uppercase tracking-wide transition-colors last:border-r-0 ${
+                className={`flex flex-col items-center gap-0.5 border-r-[3px] border-ink px-0.5 py-2.5 text-[9px] font-bold uppercase tracking-wide transition-colors last:border-r-0 ${
                   active ? "bg-acid text-ink" : "bg-paper text-ink-soft"
                 }`}
               >
