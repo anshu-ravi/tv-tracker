@@ -27,10 +27,30 @@ export async function GET(request: NextRequest) {
     console.error("AniList search failed:", anime.reason);
   }
 
-  const results: SearchResult[] = [
-    ...(tv.status === "fulfilled" ? tv.value : []),
-    ...(anime.status === "fulfilled" ? anime.value : []),
-  ];
+  const tvResults = tv.status === "fulfilled" ? tv.value : [];
+  const animeResults = anime.status === "fulfilled" ? anime.value : [];
+
+  // Prefer AniList when the same show shows up on both providers (common for
+  // anime, since TMDB also lists it under "tv"). Match conservatively — only
+  // an exact normalized-title match counts as a duplicate — and drop the
+  // TMDB copy so the AniList one wins.
+  const animeTitles = new Set(animeResults.map((r) => normalizeTitle(r.title)));
+  const dedupedTvResults = tvResults.filter(
+    (r) => !animeTitles.has(normalizeTitle(r.title)),
+  );
+
+  const results: SearchResult[] = [...animeResults, ...dedupedTvResults];
 
   return NextResponse.json({ results });
+}
+
+// lowercase, trim, collapse whitespace, strip non-alphanumerics — so "Attack
+// on Titan" and "attack on titan!" compare equal but unrelated titles don't
+// accidentally collide.
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

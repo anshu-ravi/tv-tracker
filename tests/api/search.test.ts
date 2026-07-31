@@ -71,12 +71,12 @@ describe("GET /api/search", () => {
     expect(mockSearchAnime).not.toHaveBeenCalled();
   });
 
-  it("merges TMDB and AniList results", async () => {
+  it("merges TMDB and AniList results, AniList first", async () => {
     const response = await callSearch("show");
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.results).toEqual([tvResult, animeResult]);
+    expect(body.results).toEqual([animeResult, tvResult]);
   });
 
   it("still returns 200 with the other provider's results if one rejects", async () => {
@@ -87,5 +87,65 @@ describe("GET /api/search", () => {
 
     expect(response.status).toBe(200);
     expect(body.results).toEqual([animeResult]);
+  });
+
+  it("drops the TMDB duplicate when the same title exists on AniList, keeping AniList first", async () => {
+    const tvDuplicate: SearchResult = {
+      source: "tmdb",
+      sourceId: "10",
+      mediaType: "tv",
+      title: "Attack on Titan!",
+      year: 2013,
+      posterUrl: null,
+      overview: null,
+    };
+    const animeMatch: SearchResult = {
+      source: "anilist",
+      sourceId: "20",
+      mediaType: "anime",
+      title: "attack on   titan",
+      year: 2013,
+      posterUrl: null,
+      overview: null,
+    };
+    mockSearchTv.mockResolvedValue([tvResult, tvDuplicate]);
+    mockSearchAnime.mockResolvedValue([animeMatch]);
+
+    const response = await callSearch("attack on titan");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // animeMatch first (preferred), then the surviving tv result — the
+    // near-duplicate tv title is gone entirely.
+    expect(body.results).toEqual([animeMatch, tvResult]);
+  });
+
+  it("does not dedupe titles that merely look similar (no exact normalized match)", async () => {
+    const tvSimilar: SearchResult = {
+      source: "tmdb",
+      sourceId: "11",
+      mediaType: "tv",
+      title: "Attack on Titan: Junior High",
+      year: 2015,
+      posterUrl: null,
+      overview: null,
+    };
+    const animeMatch: SearchResult = {
+      source: "anilist",
+      sourceId: "21",
+      mediaType: "anime",
+      title: "Attack on Titan",
+      year: 2013,
+      posterUrl: null,
+      overview: null,
+    };
+    mockSearchTv.mockResolvedValue([tvSimilar]);
+    mockSearchAnime.mockResolvedValue([animeMatch]);
+
+    const response = await callSearch("attack on titan");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.results).toEqual([animeMatch, tvSimilar]);
   });
 });
