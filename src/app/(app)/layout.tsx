@@ -16,7 +16,7 @@ export default async function AppLayout({
   } = await supabase.auth.getUser();
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="mx-auto flex min-h-full w-full max-w-md flex-col border-x-[3px] border-ink">
       <header className="flex items-center justify-between border-b-[3px] border-ink bg-paper px-4 py-3">
         <span className="display text-lg">TV Tracker</span>
         <div className="flex items-center gap-3">

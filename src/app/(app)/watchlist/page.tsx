@@ -42,7 +42,7 @@ export default async function WatchlistPage() {
           Nothing saved yet. Add shows from Search.
         </p>
       ) : (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2">
           {titles.map((title) => (
             <PosterCard key={title.id} title={title} status="watchlist" />
           ))}

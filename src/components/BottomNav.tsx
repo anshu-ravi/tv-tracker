@@ -17,8 +17,8 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 border-t-[3px] border-ink bg-paper">
-      <ul className="mx-auto flex max-w-lg">
+    <nav className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-x-[3px] border-t-[3px] border-ink bg-paper">
+      <ul className="flex w-full">
         {TABS.map((tab) => {
           // "/" would otherwise match every route via startsWith, so it gets
           // an exact check; every other tab matches its own subtree.
