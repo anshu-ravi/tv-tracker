@@ -29,6 +29,92 @@ function formatAirDate(iso: string | null): string | null {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// Round check-circle mark button, matching the Bold prototype: 52px circle,
+// acid fill / ink border+shadow, flips to ink-fill/acid-check mid "punch",
+// pops a "+1 EP" badge that flies up out of the top, or — when there's
+// nothing to mark — sits muted with a clock glyph and shakes on tap.
+function MarkButton({
+  caughtUp,
+  pending,
+  justMarked,
+  shakeCount,
+  popCount,
+  onClick,
+}: {
+  caughtUp: boolean;
+  pending: boolean;
+  justMarked: boolean;
+  shakeCount: number;
+  popCount: number;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      aria-label={caughtUp ? "All caught up" : "Mark episode watched"}
+      aria-disabled={caughtUp}
+      animate={
+        justMarked
+          ? { scale: [1, 0.72, 1.18, 1] }
+          : shakeCount > 0
+            ? { x: [0, -4, 4, 0] }
+            : { scale: 1, x: 0 }
+      }
+      // Re-trigger the animate prop's keyframes each time these counters
+      // change, even if the target values are structurally identical.
+      key={`${justMarked ? "punch" : "idle"}-${shakeCount}`}
+      transition={
+        justMarked
+          ? { duration: 0.48, times: [0, 0.35, 0.65, 1], ease: "easeOut" }
+          : { duration: 0.38, ease: "easeInOut" }
+      }
+      whileTap={!caughtUp && !pending ? { scale: 0.94 } : undefined}
+      className={`relative flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border-[3px] border-ink transition-colors duration-150 ${
+        justMarked
+          ? "bg-ink shadow-[3px_3px_0_0_var(--color-ink)]"
+          : caughtUp
+            ? "cursor-default bg-panel opacity-70 shadow-[3px_3px_0_0_rgba(20,18,14,0.35)]"
+            : "cursor-pointer bg-acid shadow-[3px_3px_0_0_var(--color-ink)]"
+      }`}
+    >
+      {caughtUp ? (
+        <svg
+          viewBox="0 0 24 24"
+          className="h-[22px] w-[22px] fill-none stroke-ink-soft"
+          strokeWidth={3.2}
+        >
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 8v4l3 2" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-[22px] w-[22px] fill-none ${justMarked ? "stroke-acid" : "stroke-ink"}`}
+          strokeWidth={3.2}
+        >
+          <polyline points="4,13 9,18 20,6" />
+        </svg>
+      )}
+
+      <AnimatePresence>
+        {popCount > 0 && (
+          <motion.span
+            key={popCount}
+            initial={{ opacity: 0, y: 4, scale: 0.6 }}
+            animate={{ opacity: [0, 1, 1, 0], y: [4, -2, -6, -30], scale: [0.6, 1.08, 1, 0.9] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9, times: [0, 0.2, 0.35, 1], ease: "easeOut" }}
+            className="stamp pointer-events-none absolute -right-1.5 -top-2 text-[11px]"
+          >
+            +1 EP
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </motion.button>
+  );
+}
+
 export default function WatchingCard({ data }: { data: WatchingCardData }) {
   const router = useRouter();
   // "justMarked" is a purely optimistic flag: true from the moment the POST
@@ -38,19 +124,28 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
   // no effect needed to reset local state back to the real prop values.
   const [justMarked, setJustMarked] = useState(false);
   const [pending, setPending] = useState(false);
-  const [showStamp, setShowStamp] = useState(false);
-  const [showToast, setShowToast] = useState(false);
+  const [popCount, setPopCount] = useState(0);
+  const [shakeCount, setShakeCount] = useState(0);
+  const [toast, setToast] = useState<{ message: string; withUndo: boolean } | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
 
-  const caughtUp = !data.nextUnwatchedEpisodeId || justMarked;
+  const realCaughtUp = !data.nextUnwatchedEpisodeId;
+  const caughtUp = realCaughtUp || justMarked;
   const displayedCount = data.watchedCount + (justMarked ? 1 : 0);
   const airDateLabel = formatAirDate(data.nextEpisodeAirDate);
+
+  function dismissToast() {
+    setToast(null);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }
 
   async function handleMark() {
     if (!data.nextUnwatchedEpisodeId || pending || justMarked) return;
@@ -63,14 +158,15 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
       if (!res.ok) throw new Error("Failed to mark episode watched");
 
       setJustMarked(true);
-      setShowStamp(true);
-      setShowToast(true);
-      setTimeout(() => setShowStamp(false), 700);
+      setPopCount((n) => n + 1);
+      setToast({ message: "Marked watched", withUndo: true });
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(dismissToast, 4000);
 
       // Give the user a 4s Undo window before pulling fresh server state
       // (which will hand back the next unwatched episode, if any).
       refreshTimer.current = setTimeout(() => {
-        setShowToast(false);
+        setToast(null);
         router.refresh();
       }, 4000);
     } catch {
@@ -80,10 +176,25 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
     }
   }
 
+  function handleCaughtUpTap() {
+    setShakeCount((n) => n + 1);
+    setToast({ message: "You're all caught up", withUndo: false });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(dismissToast, 2500);
+  }
+
+  function handleButtonClick() {
+    if (caughtUp) {
+      handleCaughtUpTap();
+      return;
+    }
+    void handleMark();
+  }
+
   async function handleUndo() {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     const episodeId = data.nextUnwatchedEpisodeId;
-    setShowToast(false);
+    dismissToast();
     if (!episodeId) return;
     try {
       await fetch(`/api/episodes/${episodeId}/watch`, { method: "DELETE" });
@@ -94,7 +205,7 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
   }
 
   return (
-    <div className="card-bold relative flex gap-3 p-3">
+    <div className="card-bold relative flex items-center gap-3 p-3">
       <Link
         href={`/title/${data.titleId}`}
         className="h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel"
@@ -108,68 +219,48 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
         ) : null}
       </Link>
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between">
-        <div>
-          <Link href={`/title/${data.titleId}`} className="block">
-            <h3 className="display truncate text-lg">{data.title}</h3>
-          </Link>
-          <div className="mt-1">
-            <ProgressBar watched={displayedCount} total={data.totalCount} />
-          </div>
-          <p className="mt-1 text-xs text-ink-soft">
-            {airDateLabel
-              ? `Next: ${data.nextEpisodeLabel ?? "Episode"} · ${airDateLabel}`
-              : "No upcoming episode scheduled"}
-          </p>
-        </div>
-
-        <motion.button
-          type="button"
-          onClick={handleMark}
-          disabled={caughtUp || pending}
-          whileTap={caughtUp || pending ? undefined : { scale: 0.94 }}
-          animate={showStamp ? { scale: [1, 1.06, 1] } : { scale: 1 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className={`hard-shadow-sm mt-2 w-full border-[3px] border-ink px-3 py-2 text-xs font-bold uppercase tracking-wide transition-colors disabled:opacity-50 ${
-            caughtUp ? "bg-panel text-ink-soft" : "bg-acid text-ink"
-          }`}
-        >
-          {caughtUp ? "All caught up" : pending ? "Marking…" : "Mark Watched"}
-        </motion.button>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <Link href={`/title/${data.titleId}`} className="block">
+          <h3 className="display truncate text-lg">{data.title}</h3>
+        </Link>
+        <ProgressBar watched={displayedCount} total={data.totalCount} />
+        <p className="text-xs font-semibold text-ink-soft">
+          {airDateLabel
+            ? `Next: ${data.nextEpisodeLabel ?? "Episode"} · ${airDateLabel}`
+            : "No upcoming episode scheduled"}
+        </p>
       </div>
 
-      <AnimatePresence>
-        {showStamp && (
-          <motion.span
-            initial={{ opacity: 0, scale: 0.4, rotate: -14 }}
-            animate={{ opacity: 1, scale: 1, rotate: -8 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            transition={{ type: "spring", stiffness: 500, damping: 20 }}
-            className="stamp pointer-events-none absolute right-3 top-3 text-sm"
-          >
-            +1 EP
-          </motion.span>
-        )}
-      </AnimatePresence>
+      <MarkButton
+        caughtUp={caughtUp}
+        pending={pending}
+        justMarked={justMarked}
+        shakeCount={shakeCount}
+        popCount={popCount}
+        onClick={handleButtonClick}
+      />
 
       <AnimatePresence>
-        {showToast && (
+        {toast && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="hard-shadow-sm absolute -bottom-3 left-3 right-3 z-10 flex items-center justify-between border-[3px] border-ink bg-ink px-3 py-2"
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.32, ease: [0.2, 0.9, 0.25, 1] }}
+            className="absolute -bottom-3 left-3 right-3 z-10 flex items-center justify-between gap-3 border-[3px] border-ink bg-ink px-3 py-2 shadow-[4px_4px_0_0_rgba(199,255,62,0.9)]"
           >
             <span className="text-xs font-bold uppercase tracking-wide text-paper">
-              Marked watched
+              {toast.message}
             </span>
-            <button
-              type="button"
-              onClick={handleUndo}
-              className="text-xs font-bold uppercase tracking-wide text-acid underline"
-            >
-              Undo
-            </button>
+            {toast.withUndo ? (
+              <button
+                type="button"
+                onClick={handleUndo}
+                className="shrink-0 border-2 border-acid px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-acid"
+              >
+                Undo
+              </button>
+            ) : null}
           </motion.div>
         )}
       </AnimatePresence>

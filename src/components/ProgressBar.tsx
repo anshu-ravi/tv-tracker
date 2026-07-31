@@ -7,35 +7,34 @@ export interface ProgressBarProps {
   watched: number;
   /** Total episodes for the title. May be 0 if not yet known. */
   total: number;
-  /** Whether the fill should spring to its new width (vs. snap instantly). */
+  /** Whether the fill should animate to its new width (vs. snap instantly). */
   animate?: boolean;
 }
 
-// Bold-styled horizontal progress track: hard 3px ink border, paper/panel
-// track, acid-green fill that springs to its new width. Used on Home's
-// "currently watching" cards to show watchedCount / totalCount.
+// Bold-styled thin horizontal progress track, matching the prototype:
+// a hairline (2px border, ~10px tall) bar with an ink fill that eases to
+// its new width, and the "watched / total" label sitting to its LEFT.
 export default function ProgressBar({ watched, total, animate = true }: ProgressBarProps) {
   const hasTotal = total > 0;
   const pct = hasTotal ? Math.min(100, Math.max(0, (watched / total) * 100)) : 0;
-  const complete = hasTotal && watched >= total;
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="hard-shadow-sm h-3 w-full overflow-hidden border-[3px] border-ink bg-panel">
+    <div className="flex items-center gap-2">
+      <span className="whitespace-nowrap text-[11.5px] font-extrabold text-ink">
+        {hasTotal ? `${watched} / ${total}` : `${watched} ep watched`}
+      </span>
+      <div className="h-2.5 flex-1 overflow-hidden border-2 border-ink bg-panel">
         <motion.div
-          className={`h-full ${complete ? "bg-ink" : "bg-acid"}`}
+          className="h-full bg-ink"
           initial={false}
           animate={{ width: hasTotal ? `${pct}%` : "0%" }}
           transition={
             animate
-              ? { type: "spring", stiffness: 260, damping: 24 }
+              ? { duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }
               : { duration: 0 }
           }
         />
       </div>
-      <span className="text-xs font-semibold text-ink-soft">
-        {hasTotal ? `${watched} / ${total}` : `${watched} ep watched`}
-      </span>
     </div>
   );
 }
