@@ -32,6 +32,7 @@ There is no test runner configured yet. Single files: once a test setup exists, 
 - **Never read `.env` or print its contents.** The user placed the TMDB key there and explicitly asked that it never be read. Reference it only as `process.env.TMDB_API_KEY` in server code; to check presence, test that the var is non-empty — never log the value. `.gitignore` ignores all `.env*`.
 - Supabase public config lives in `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` = the publishable key). Not committed.
 - Provider API calls (TMDB/AniList) happen **server-side only** (route handlers / server components), never from the browser.
+- **Never add Claude/AI attribution to git history.** The user explicitly does not want co-author trailers on commits or a "Generated with Claude Code" line in PR bodies. This overrides the usual default — omit both.
 
 ## Architecture
 
@@ -71,7 +72,37 @@ Bottom-tab PWA: **Home** (currently-watching cards + one-tap mark-watched) · **
 
 Locked neo-brutalist direction (do not drift toward the rejected glass/cinematic look): cream/paper base (~`#F3EEDF`), near-black ink, **acid-green accent** (~`#C7FF3E`), oversized heavy uppercase display type, hard 3px borders with offset hard-drop shadows, a rotated sticker-style stamp, faint hairline grid texture. The mark-watched control is a decisive punch/scale with a "+1 EP" stamp and a 4s Undo toast; guard finales ("All caught up", disable — never render "null"). Committed to a light theme (no dark-mode variant).
 
+## Backend & future Python
+
+There is **no separate backend service**. The "backend" is Supabase (Postgres +
+Auth + RLS + planned cron) plus a thin layer of Next.js route handlers / server
+components in TypeScript. Keep that server surface small — let Postgres + RLS do
+the work rather than building a heavy API tier.
+
+The user is most comfortable in **Python** and may later want data/ML work
+(analytics, a recommender, batch jobs). That's fully supported *without* touching
+the app: Postgres is a language-neutral hub, so a separate Python process
+(`supabase-py`, `psycopg`/SQLAlchemy, pandas, a FastAPI service, notebooks) can
+read/write the same database independently. Don't rewrite the app in Python — add
+Python alongside, against the DB, when such needs arise. When writing the TS,
+explain it as you go; the user is learning it.
+
+## Auth
+
+Single user, **email + password** via Supabase Auth. The middleware
+(`src/middleware.ts`) refreshes the session and redirects unauthenticated
+requests to `/login`. Supabase's default "Confirm email" may need to be turned
+off in the dashboard for a one-person app — Claude can't toggle it; ask the user.
+
+## Git & branching
+
+Remote: `github.com/anshu-ravi/tv-tracker`. Feature work goes on `feat/*`
+branches off `main`; follow the user-level **`git-workflow`** skill for branch
+names, small Conventional-Commit blocks, and PR bodies. Reminder: **no Claude
+attribution** anywhere in the history (see Hard rules). Current in-progress
+branch: `feat/app-foundation`.
+
 ## Working agreements
 
 - The user prefers reviewing before big changes and has delegated heavy prototyping to subagents in the past; confirm direction before large or outward-facing steps.
-- Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`).
+- Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`), and the live build status lives in `HANDOFF.md`.
