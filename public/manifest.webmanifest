@@ -1,0 +1,11 @@
+{
+  "name": "TV Tracker",
+  "short_name": "Tracker",
+  "description": "Track the TV shows and anime you're watching, and when the next episode airs.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3eedf",
+  "theme_color": "#f3eedf"
+}
