@@ -32,7 +32,7 @@ export default async function LoginPage({
         </div>
 
         {error ? (
-          <p className="mb-4 border-[3px] border-ink bg-acid/40 p-3 text-sm font-medium text-ink">
+          <p className="mb-4 border-[3px] border-ink bg-[#ff5c39] p-3 text-sm font-medium text-ink">
             {error}
           </p>
         ) : null}
