@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { MediaType, WatchStatus } from "@/lib/types";
 import TitleActions from "@/components/TitleActions";
 
@@ -29,25 +30,27 @@ export default function PosterCard({
     <div
       className={`card-bold overflow-hidden p-0 ${muted ? "opacity-60 grayscale-[35%]" : ""}`}
     >
-      <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
-        {title.posterUrl ? (
-          <img
-            src={title.posterUrl}
-            alt={title.title}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center p-2 text-center">
-            <span className="display text-sm leading-tight text-ink-soft">
-              {title.title}
-            </span>
-          </div>
-        )}
-      </div>
-      <p className="truncate px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide">
-        {title.title}
-      </p>
+      <Link href={`/title/${title.id}`}>
+        <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
+          {title.posterUrl ? (
+            <img
+              src={title.posterUrl}
+              alt={title.title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center p-2 text-center">
+              <span className="display text-sm leading-tight text-ink-soft">
+                {title.title}
+              </span>
+            </div>
+          )}
+        </div>
+        <p className="truncate px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+          {title.title}
+        </p>
+      </Link>
       {status && <TitleActions titleId={title.id} status={status} />}
     </div>
   );
