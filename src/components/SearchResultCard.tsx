@@ -72,11 +72,11 @@ export default function SearchResultCard({
         )}
       </div>
 
-      <div className="p-2">
-        <p className="truncate text-xs font-bold uppercase tracking-wide">
+      <div className="p-1.5">
+        <p className="truncate text-[10px] font-bold uppercase tracking-wide">
           {result.title}
         </p>
-        <p className="text-[10px] uppercase text-ink-soft">
+        <p className="text-[9px] uppercase text-ink-soft">
           {result.mediaType}
           {result.year ? ` · ${result.year}` : ""}
         </p>
