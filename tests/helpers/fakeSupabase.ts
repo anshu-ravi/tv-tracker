@@ -3,7 +3,7 @@
 //   from(table).upsert(...).select(...).single()/.maybeSingle()
 //   from(table).insert(...)
 //   from(table).update(...).eq(...).eq(...).select().maybeSingle()
-//   from(table).delete().eq(...).eq(...)
+//   from(table).delete().eq(...).eq(...).in(...)
 //   auth.getUser()
 //
 // Not a test file itself (lives outside the `tests/**/*.test.ts` glob).
@@ -56,6 +56,10 @@ export class FakeQueryBuilder implements PromiseLike<TableResult> {
 
   eq(...args: unknown[]): this {
     return this.record("eq", args);
+  }
+
+  in(...args: unknown[]): this {
+    return this.record("in", args);
   }
 
   single(): Promise<TableResult> {
