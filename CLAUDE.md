@@ -89,9 +89,9 @@ explain it as you go; the user is learning it.
 
 ## Auth
 
-Single user, **email + password** via Supabase Auth. The middleware
-(`src/middleware.ts`) refreshes the session and redirects unauthenticated
-requests to `/login`. Supabase's default "Confirm email" may need to be turned
+Single user, **email + password** via Supabase Auth. The proxy
+(`src/proxy.ts` — Next 16's renamed "middleware" convention) refreshes the
+session and redirects unauthenticated requests to `/login`. Supabase's default "Confirm email" may need to be turned
 off in the dashboard for a one-person app — Claude can't toggle it; ask the user.
 
 ## Git & branching
@@ -105,4 +105,13 @@ branch: `feat/app-foundation`.
 ## Working agreements
 
 - The user prefers reviewing before big changes and has delegated heavy prototyping to subagents in the past; confirm direction before large or outward-facing steps.
+- **Every feature ships through the git workflow.** Open a dedicated `feat/*`
+  branch off `main`, commit in small Conventional-Commit blocks, then merge it
+  back into `main` properly (via the **`git-workflow`** skill) once done. Don't
+  leave work stranded on long-lived branches or commit straight to `main`.
+- **Claude never writes the implementation itself.** All code changes are carried
+  out by **subagents running Sonnet 5**, given clear, self-contained instructions.
+  Claude's own role is planning, writing those instructions, reviewing the
+  subagent's output, running builds/verification, and driving git. Do not edit
+  feature/source code directly — delegate it.
 - Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`), and the live build status lives in `HANDOFF.md`.
