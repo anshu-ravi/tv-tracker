@@ -38,20 +38,34 @@ merged into `main`** (build + lint verified green). What's on `main`:
   all 401 without a session. Response shapes documented in the code.
 - ✅ **PWA icons** — `public/icon-{192,512,512-maskable}.png` + `scripts/generate-icons.py`
   (Pillow, regenerable); manifest updated with `any` + `maskable` entries.
+- ✅ **Screens** (Bold UI, Framer Motion) — bottom-tab shell (`src/app/(app)/`),
+  Home currently-watching cards with animated **progress bar** + punchy
+  mark-watched (`WatchingCard`, `ProgressBar`) + undo + finale guard, TV/Anime
+  bucketed grids (DNF muted), Watchlist, Search (add-to-bucket). **Runtime-tested**
+  ✅ (adds land correctly, verified in DB).
+- ✅ **Library editing** — each poster tile has a status dropdown + ✕ remove
+  (`TitleActions`); `DELETE /api/titles/:id` removes tracking rows (catalog kept).
+- ✅ **Title detail** — `/title/[titleId]`: backdrop/poster/overview, **creator +
+  cast** fetched live from TMDB/AniList (`getTvCredits`/`getAnimeCredits`, not
+  stored), episodes by season with per-episode ticks (`EpisodeTick`) and
+  mark/unmark-whole-season (`SeasonControls` → `POST`/`DELETE
+  /api/titles/:id/season/:n/watch`). Poster tiles + Home cards link here.
+- ✅ **Search prefers AniList** — dedupes the TMDB/TV duplicate when a title
+  exists on both; anime results shown first.
+- ✅ **Mobile-first framing** — app clamped to a centered `max-w-md` phone-width
+  column with `border-x`; grids fixed at 3 columns (so desktop == phone).
+- ✅ **Test harness** — Vitest; **50 tests** (`npm test`) over provider
+  normalization + all API-route handlers. `npm run lint` clean (only expected
+  `<img>` LCP warnings).
 - 🟡 **Nightly air-date cron — AUTHORED, NOT DEPLOYED.** Files exist under
   `supabase/`: `functions/refresh-air-dates/index.ts` (Deno), a pg_cron
   scheduling migration, and a README with a deploy checklist. **Nothing is live
-  yet** — deploying needs owner approval + secrets (see "Cron deploy" below).
+  yet** — deploying needs owner approval + secrets (see below).
   Note: `supabase/functions/**` is excluded from the app's tsc/eslint (Deno runtime).
 
 ### NOT yet done — this is the resume list
 
-1. **Screens** (Bold UI, Framer Motion): Home (currently-watching cards + one-tap
-   mark-watched + undo toast + finale guard), TV & Anime tabs (poster grids split
-   into Watching/Watchlist/Completed/DNF, DNF muted), Watchlist, Search. Bottom
-   tab nav. Build against the API routes above. Reference prototype behavior in
-   `context.md` / memory.
-2. **Deploy the cron** (see checklist in
+1. **Deploy the cron** (see checklist in
    `supabase/functions/refresh-air-dates/README.md`): set `TMDB_API_KEY` secret,
    `supabase functions deploy refresh-air-dates`, smoke-test with a manual POST,
    fill the migration placeholders (`ermhfiofisjsrniccqlv` + service-role key, or
