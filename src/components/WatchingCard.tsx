@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import ProgressBar from "@/components/ProgressBar";
 
 // Everything the Home page's server component already knows about a single
 // "currently watching" title, pre-computed there (progress counts + which
@@ -91,12 +93,12 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
     }
   }
 
-  const progressLabel =
-    data.totalCount > 0 ? `${displayedCount} / ${data.totalCount}` : `${displayedCount} ep watched`;
-
   return (
     <div className="card-bold relative flex gap-3 p-3">
-      <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel">
+      <Link
+        href={`/title/${data.titleId}`}
+        className="h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel"
+      >
         {data.posterUrl ? (
           <img
             src={data.posterUrl}
@@ -104,29 +106,36 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
             className="h-full w-full object-cover"
           />
         ) : null}
-      </div>
+      </Link>
 
       <div className="flex min-w-0 flex-1 flex-col justify-between">
         <div>
-          <h3 className="display truncate text-lg">{data.title}</h3>
-          <p className="text-xs font-semibold text-ink-soft">{progressLabel}</p>
-          <p className="mt-0.5 text-xs text-ink-soft">
+          <Link href={`/title/${data.titleId}`} className="block">
+            <h3 className="display truncate text-lg">{data.title}</h3>
+          </Link>
+          <div className="mt-1">
+            <ProgressBar watched={displayedCount} total={data.totalCount} />
+          </div>
+          <p className="mt-1 text-xs text-ink-soft">
             {airDateLabel
               ? `Next: ${data.nextEpisodeLabel ?? "Episode"} · ${airDateLabel}`
               : "No upcoming episode scheduled"}
           </p>
         </div>
 
-        <button
+        <motion.button
           type="button"
           onClick={handleMark}
           disabled={caughtUp || pending}
-          className={`hard-shadow-sm mt-2 w-full border-[3px] border-ink px-3 py-2 text-xs font-bold uppercase tracking-wide transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 ${
+          whileTap={caughtUp || pending ? undefined : { scale: 0.94 }}
+          animate={showStamp ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          className={`hard-shadow-sm mt-2 w-full border-[3px] border-ink px-3 py-2 text-xs font-bold uppercase tracking-wide transition-colors disabled:opacity-50 ${
             caughtUp ? "bg-panel text-ink-soft" : "bg-acid text-ink"
           }`}
         >
           {caughtUp ? "All caught up" : pending ? "Marking…" : "Mark Watched"}
-        </button>
+        </motion.button>
       </div>
 
       <AnimatePresence>
