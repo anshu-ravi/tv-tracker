@@ -1,4 +1,5 @@
-import type { MediaType } from "@/lib/types";
+import type { MediaType, WatchStatus } from "@/lib/types";
+import TitleActions from "@/components/TitleActions";
 
 export interface PosterCardTitle {
   id: string;
@@ -11,12 +12,18 @@ export interface PosterCardTitle {
 // entry (per the design spec — DNF stays visible but visually de-emphasized,
 // never hidden). Plain <img>, not next/image: no remote-image domains are
 // configured and this component can't touch next.config.ts.
+//
+// `status`, when passed, renders the edit controls (change bucket / remove)
+// below the poster — callers that already know the title's current bucket
+// (BucketSection, the Watchlist grid) pass it; omit it to render a bare tile.
 export default function PosterCard({
   title,
   muted = false,
+  status,
 }: {
   title: PosterCardTitle;
   muted?: boolean;
+  status?: WatchStatus;
 }) {
   return (
     <div
@@ -38,9 +45,10 @@ export default function PosterCard({
           </div>
         )}
       </div>
-      <p className="truncate px-2 py-1.5 text-xs font-bold uppercase tracking-wide">
+      <p className="truncate px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide">
         {title.title}
       </p>
+      {status && <TitleActions titleId={title.id} status={status} />}
     </div>
   );
 }
