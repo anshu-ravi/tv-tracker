@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { SearchResult, WatchStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
@@ -12,20 +13,29 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
 
 // One search result tile with an inline add-to-bucket control. Status
 // defaults to "watchlist" per the spec; once added, the control collapses
-// into a stamp showing which bucket it landed in.
+// into a stamp showing which bucket it landed in. A search result only has
+// a catalog `titles.id` (needed for the detail route) once it's actually in
+// the library — either already, via `existingTitleId`, or freshly added,
+// via the POST response — so the poster only links to /title/:id then;
+// otherwise it stays a plain (non-navigating) tile.
 export default function SearchResultCard({
   result,
   existingStatus,
+  existingTitleId,
   onAdded,
 }: {
   result: SearchResult;
   existingStatus?: WatchStatus;
+  existingTitleId?: string;
   onAdded: () => void;
 }) {
   const [status, setStatus] = useState<WatchStatus>(existingStatus ?? "watchlist");
   const [pending, setPending] = useState(false);
   const [savedStatus, setSavedStatus] = useState<WatchStatus | undefined>(
     existingStatus,
+  );
+  const [savedTitleId, setSavedTitleId] = useState<string | undefined>(
+    existingTitleId,
   );
   const [errored, setErrored] = useState(false);
 
@@ -44,7 +54,9 @@ export default function SearchResultCard({
         }),
       });
       if (!res.ok) throw new Error("Failed to add title");
+      const body = (await res.json()) as { titleId: string };
       setSavedStatus(status);
+      setSavedTitleId(body.titleId);
       onAdded();
     } catch {
       setErrored(true);
@@ -53,24 +65,34 @@ export default function SearchResultCard({
     }
   }
 
+  const poster = result.posterUrl ? (
+    <img
+      src={result.posterUrl}
+      alt={result.title}
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
+  ) : (
+    <div className="flex h-full w-full items-center justify-center p-2 text-center">
+      <span className="display text-sm leading-tight text-ink-soft">
+        {result.title}
+      </span>
+    </div>
+  );
+
   return (
     <div className="card-bold overflow-hidden p-0">
-      <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
-        {result.posterUrl ? (
-          <img
-            src={result.posterUrl}
-            alt={result.title}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center p-2 text-center">
-            <span className="display text-sm leading-tight text-ink-soft">
-              {result.title}
-            </span>
+      {savedTitleId ? (
+        <Link href={`/title/${savedTitleId}`}>
+          <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
+            {poster}
           </div>
-        )}
-      </div>
+        </Link>
+      ) : (
+        <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
+          {poster}
+        </div>
+      )}
 
       <div className="p-1.5">
         <p className="truncate text-[10px] font-bold uppercase tracking-wide">

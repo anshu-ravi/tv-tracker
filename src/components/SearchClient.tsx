@@ -3,16 +3,17 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import SearchResultCard from "@/components/SearchResultCard";
-import type { SearchResult, WatchStatus } from "@/lib/types";
+import type { SearchResult } from "@/lib/types";
+import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
 
 // Query input + results grid. `existing` maps "source:sourceId" -> the
-// caller's current bucket for that title, computed server-side, so results
-// already in the library render as "In Watching" etc. instead of an add
-// control.
+// caller's current bucket + catalog title id for that title, computed
+// server-side, so results already in the library render as "In Watching"
+// etc. (linking to the detail page) instead of an add control.
 export default function SearchClient({
   existing,
 }: {
-  existing: Record<string, WatchStatus>;
+  existing: Record<string, ExistingLibraryEntry>;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -75,7 +76,12 @@ export default function SearchClient({
             <SearchResultCard
               key={`${result.source}:${result.sourceId}`}
               result={result}
-              existingStatus={existing[`${result.source}:${result.sourceId}`]}
+              existingStatus={
+                existing[`${result.source}:${result.sourceId}`]?.status
+              }
+              existingTitleId={
+                existing[`${result.source}:${result.sourceId}`]?.titleId
+              }
               onAdded={() => router.refresh()}
             />
           ))}
