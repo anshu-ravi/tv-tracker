@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 import { useTitleActions } from "@/lib/useTitleActions";
-import { TagIcon, BookmarkPlusIcon, HeartIcon, CheckIcon } from "@/components/icons";
+import { TagIcon, BookmarkPlusIcon, HeartIcon, CheckIcon, RefreshIcon } from "@/components/icons";
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
@@ -63,6 +64,37 @@ export default function TitleActionBar({
   const [listOpen, setListOpen] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
+
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  // Re-fetches this title from its provider (TMDB/AniList) and re-upserts
+  // titles + episodes — fixes shows left incomplete by the one-time Trakt
+  // import (e.g. a season that was never added because nothing in it had
+  // been watched yet). Only meaningful once the title is actually in the
+  // catalog, so this is a no-op on the not-yet-added preview page.
+  async function onRefresh() {
+    if (!resolvedTitleId || refreshing) return;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const res = await fetch("/api/titles/refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ titleId: resolvedTitleId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Refresh failed");
+      }
+      router.refresh();
+    } catch {
+      setRefreshError("Couldn't refresh — try again.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   function openStatusMenu() {
     setListOpen(false);
@@ -243,9 +275,24 @@ export default function TitleActionBar({
         >
           <HeartIcon filled={favorited} className="h-5 w-5" />
         </button>
+
+        {/* Refresh data — only meaningful once the title is actually in the
+            catalog (resolvedTitleId set), so hidden on the preview page. */}
+        {resolvedTitleId && (
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="Refresh data"
+            className={iconButtonClass(false)}
+          >
+            <RefreshIcon className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+        )}
       </div>
 
       {statusError && <p className="text-[10px] text-ink-soft">That didn&rsquo;t save — try again.</p>}
+      {refreshError && <p className="text-[10px] text-ink-soft">{refreshError}</p>}
     </div>
   );
 }

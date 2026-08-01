@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import ProfileEditor from "@/components/ProfileEditor";
+import RefreshTrackedButton from "@/components/RefreshTrackedButton";
 
 // Account screen — profile (display name + avatar, stored in Supabase Auth
 // user_metadata) plus identity + sign out, moved here from the app-shell
@@ -67,6 +68,8 @@ export default async function AccountPage() {
           </button>
         </form>
       </div>
+
+      <RefreshTrackedButton />
 
       <Link
         href="/account/stats"
