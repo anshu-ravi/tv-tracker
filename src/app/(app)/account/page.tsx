@@ -45,7 +45,6 @@ export default async function AccountPage() {
 
       {user && (
         <ProfileEditor
-          userId={user.id}
           initialDisplayName={displayName}
           initialAvatarUrl={avatarUrl}
         />

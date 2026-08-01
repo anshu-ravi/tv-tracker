@@ -2,17 +2,15 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 type Props = {
-  userId: string;
   initialDisplayName: string;
   initialAvatarUrl: string | null;
 };
 
 type Status = { kind: "idle" } | { kind: "pending" } | { kind: "success"; message: string } | { kind: "error"; message: string };
 
-export default function ProfileEditor({ userId, initialDisplayName, initialAvatarUrl }: Props) {
+export default function ProfileEditor({ initialDisplayName, initialAvatarUrl }: Props) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -31,41 +29,25 @@ export default function ProfileEditor({ userId, initialDisplayName, initialAvata
     event.preventDefault();
     setStatus({ kind: "pending" });
 
-    const supabase = createClient();
     const trimmedName = displayName.trim();
     const file = fileInputRef.current?.files?.[0];
 
     try {
-      let avatarUrl: string | undefined;
-
+      const formData = new FormData();
+      formData.append("display_name", trimmedName);
       if (file) {
-        const path = `${userId}/avatar`;
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(path, file, { upsert: true });
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("avatars").getPublicUrl(path);
-
-        avatarUrl = `${publicUrl}?v=${Date.now()}`;
+        formData.append("avatar", file);
       }
 
-      const data: { display_name: string; avatar_url?: string } = {
-        display_name: trimmedName,
-      };
-      if (avatarUrl) {
-        data.avatar_url = avatarUrl;
-      }
+      const response = await fetch("/api/account/profile", {
+        method: "POST",
+        body: formData,
+      });
 
-      const { error: updateError } = await supabase.auth.updateUser({ data });
+      const body = await response.json().catch(() => null);
 
-      if (updateError) {
-        throw updateError;
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Something went wrong.");
       }
 
       setStatus({ kind: "success", message: "Profile updated." });
