@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAnimeCredits } from "@/lib/anilist";
 import { getTvCredits } from "@/lib/tmdb";
+import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import type { DataSource, MediaType, TitleCredits, WatchStatus } from "@/lib/types";
@@ -109,6 +110,13 @@ export default async function TitleDetailPage({
     console.error("Failed to fetch credits:", err);
   }
 
+  // Anime-only: episode names + canon/filler/mixed tags from
+  // animefillerlist.com, keyed by episode number there (which lines up with
+  // our absolute_number). getAnimeFillerData already swallows its own
+  // errors/no-match and returns null, so this never breaks the page.
+  const fillerData: Map<number, EpisodeFiller> | null =
+    title.media_type === "anime" ? await getAnimeFillerData(title.title) : null;
+
   // Group episodes by season, preserving the query's season/episode order,
   // and shape each row down to what the client EpisodeSection needs (it
   // formats dates itself so this stays plain data, no server-only bits).
@@ -117,13 +125,17 @@ export default async function TitleDetailPage({
     seasonNumber,
     episodes: episodes
       .filter((e) => e.season_number === seasonNumber)
-      .map((e) => ({
-        id: e.id,
-        episodeNumber: e.episode_number,
-        absoluteNumber: e.absolute_number,
-        name: e.name,
-        airLabel: formatDate(e.air_date),
-      })),
+      .map((e) => {
+        const filler = fillerData?.get(e.absolute_number ?? e.episode_number);
+        return {
+          id: e.id,
+          episodeNumber: e.episode_number,
+          absoluteNumber: e.absolute_number,
+          name: e.name || filler?.name || null,
+          airLabel: formatDate(e.air_date),
+          fillerType: filler?.type,
+        };
+      }),
   }));
 
   const year = title.first_air_date ? title.first_air_date.slice(0, 4) : null;
