@@ -15,6 +15,9 @@ interface TitleRow {
   media_type: MediaType;
   source: DataSource;
   source_id: string;
+  // Whether the provider still lists this as ongoing — only used to badge
+  // the completed bucket ("Ended" vs "Caught up"), see PosterCard.
+  is_running: boolean;
 }
 
 interface UserTitleRow {
@@ -37,7 +40,9 @@ export default async function BucketedGridPage({
   const [{ data }, favoriteIds] = await Promise.all([
     supabase
       .from("user_titles")
-      .select("status, titles!inner(id, title, poster_url, media_type, source, source_id)")
+      .select(
+        "status, titles!inner(id, title, poster_url, media_type, source, source_id, is_running)",
+      )
       .eq("titles.media_type", mediaType),
     getFavoriteTitleIds(supabase),
   ]);
@@ -61,6 +66,7 @@ export default async function BucketedGridPage({
       source: row.titles.source,
       sourceId: row.titles.source_id,
       favorited: favoriteIds.has(row.titles.id),
+      isRunning: row.titles.is_running,
     });
   }
 

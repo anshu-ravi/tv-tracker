@@ -12,6 +12,7 @@
 // episodes the user had actually watched — see scripts/refresh-catalog/).
 import { getAnimeTitle } from "@/lib/anilist";
 import { getTvTitle } from "@/lib/tmdb";
+import { getEpisodeSynopsis, getEpisodeTitles } from "@/lib/jikan";
 import type {
   DataSource,
   MediaType,
@@ -84,13 +85,24 @@ async function upsertTitleAndEpisodes(
   // season 1. A refresh can add whole new seasons here (that's the point —
   // the original Trakt import only wrote episodes the user had watched).
   if (episodes.length > 0) {
+    // AniList (anime) episodes carry no name/overview at all — those are
+    // filled in separately by enrichAnimeEpisodes (Jikan), below. Whether a
+    // given fetch includes those fields is uniform across the whole array
+    // (they either all come from TMDB, which always has them, or all from
+    // AniList, which never does), so the presence check only needs to run
+    // once. Omitting the key entirely — rather than writing `?? null` — is
+    // what matters: PostgREST only touches columns present in the payload,
+    // so a refresh can never overwrite a name/synopsis Jikan already wrote
+    // with null just because this fetch didn't have one.
+    const hasName = episodes.some((ep) => ep.name !== undefined);
+    const hasOverview = episodes.some((ep) => ep.overview !== undefined);
     const episodeRows = episodes.map((ep) => ({
       title_id: titleId,
       season_number: ep.seasonNumber,
       episode_number: ep.episodeNumber,
       absolute_number: ep.absoluteNumber ?? null,
-      name: ep.name ?? null,
-      overview: ep.overview ?? null,
+      ...(hasName ? { name: ep.name ?? null } : {}),
+      ...(hasOverview ? { overview: ep.overview ?? null } : {}),
       air_date: ep.airDate ?? null,
       still_url: ep.stillUrl ?? null,
       runtime: ep.runtime ?? null,
@@ -111,6 +123,86 @@ async function upsertTitleAndEpisodes(
   return { titleId, title, episodesUpserted: episodes.length };
 }
 
+// ---- anime episode enrichment (Jikan) ---------------------------------
+
+// AniList has episode air dates but no per-episode title/synopsis field at
+// all, so those are backfilled from Jikan/MAL (see lib/jikan.ts) as a
+// second pass *after* the main upsert above has written the episode rows.
+// Doing it as a separate targeted UPDATE (rather than folding it into the
+// upsert payload) means it can never clobber a good name/overview that's
+// already in the DB with a null from a run that didn't find one.
+//
+// Synopses are one Jikan request per episode (no bulk endpoint), so they're
+// rationed: only episodes still missing an overview are fetched, and only up
+// to this many per run. A long-running show like Bleach (366 eps) then
+// converges over several refreshes instead of one very slow run.
+const MAX_SYNOPSIS_PER_RUN = 100;
+
+interface EpisodeEnrichmentRow {
+  id: string;
+  episode_number: number;
+  name: string | null;
+  overview: string | null;
+}
+
+// Best-effort: any failure here (bad malId, Jikan down, DB error) is logged
+// and swallowed — enrichment is a nice-to-have layered on top of the catalog
+// data that already got written by upsertTitleAndEpisodes.
+async function enrichAnimeEpisodes(
+  supabase: SupabaseClient,
+  titleId: string,
+  malId: number | null,
+): Promise<void> {
+  if (!malId) return; // not every AniList entry maps to a MAL id
+
+  try {
+    const { data, error } = await supabase
+      .from("episodes")
+      .select("id, episode_number, name, overview")
+      .eq("title_id", titleId)
+      .eq("season_number", 1); // anime is always tracked as season 1
+
+    if (error || !data) {
+      console.error("Jikan enrichment: failed to load episodes for", titleId, error);
+      return;
+    }
+    const rows = data as EpisodeEnrichmentRow[];
+    if (rows.length === 0) return;
+
+    // Episode titles: cheap (a handful of paginated calls), so always fetch
+    // and fill in whatever's currently missing.
+    const titleMap = await getEpisodeTitles(malId);
+    for (const row of rows) {
+      const title = titleMap.get(row.episode_number);
+      if (!title || row.name) continue; // never overwrite an existing name
+      const { error: updateError } = await supabase
+        .from("episodes")
+        .update({ name: title })
+        .eq("id", row.id);
+      if (updateError) console.error("Jikan enrichment: failed to update name for", row.id, updateError);
+    }
+
+    // Synopses: one request each, capped per run. Fetch in episode order so
+    // repeated runs steadily backfill from the start of the series.
+    const missingOverview = rows
+      .filter((r) => !r.overview)
+      .sort((a, b) => a.episode_number - b.episode_number)
+      .slice(0, MAX_SYNOPSIS_PER_RUN);
+
+    for (const row of missingOverview) {
+      const synopsis = await getEpisodeSynopsis(malId, row.episode_number);
+      if (!synopsis) continue;
+      const { error: updateError } = await supabase
+        .from("episodes")
+        .update({ overview: synopsis })
+        .eq("id", row.id);
+      if (updateError) console.error("Jikan enrichment: failed to update overview for", row.id, updateError);
+    }
+  } catch (err) {
+    console.error("Jikan enrichment failed for title", titleId, err);
+  }
+}
+
 export async function ensureCatalogTitle(
   supabase: SupabaseClient,
   { source, sourceId, mediaType }: EnsureCatalogTitleInput,
@@ -122,16 +214,23 @@ export async function ensureCatalogTitle(
   // Only tv (via TMDB) and anime (via AniList) are wired up today — movies
   // are reserved in the schema but have no provider client yet.
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
+  let malId: number | null = null;
   if (mediaType === "tv" && source === "tmdb") {
     fetched = await getTvTitle(sourceId);
   } else if (mediaType === "anime" && source === "anilist") {
-    fetched = await getAnimeTitle(sourceId);
+    const anime = await getAnimeTitle(sourceId);
+    fetched = anime;
+    malId = anime.malId;
   } else {
     return { error: "Unsupported source/mediaType combination", status: 400 };
   }
 
   const result = await upsertTitleAndEpisodes(supabase, fetched);
   if ("error" in result) return result;
+
+  // Best-effort episode title/synopsis backfill — never blocks the response.
+  if (mediaType === "anime") await enrichAnimeEpisodes(supabase, result.titleId, malId);
+
   return { titleId: result.titleId };
 }
 
@@ -170,13 +269,16 @@ export async function refreshCatalogTitle(
   const row = data as TitleLookupRow;
 
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
+  let malId: number | null = null;
   try {
     if (row.media_type === "tv" && row.source === "tmdb") {
       // { fresh: true } bypasses TMDB's hour-long HTTP cache (see
       // lib/tmdb.ts) — a refresh exists specifically to see current data.
       fetched = await getTvTitle(row.source_id, { fresh: true });
     } else if (row.media_type === "anime" && row.source === "anilist") {
-      fetched = await getAnimeTitle(row.source_id);
+      const anime = await getAnimeTitle(row.source_id);
+      fetched = anime;
+      malId = anime.malId;
     } else {
       return { error: "Unsupported source/mediaType combination", status: 400 };
     }
@@ -187,6 +289,12 @@ export async function refreshCatalogTitle(
 
   const result = await upsertTitleAndEpisodes(supabase, fetched);
   if ("error" in result) return result;
+
+  // Best-effort episode title/synopsis backfill — never blocks the response.
+  // A refresh (this function) is exactly when this enrichment should run:
+  // it's the point where episode rows for a title get (re)written.
+  if (row.media_type === "anime") await enrichAnimeEpisodes(supabase, result.titleId, malId);
+
   return {
     titleId: result.titleId,
     title: result.title.title,

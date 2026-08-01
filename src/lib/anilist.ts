@@ -64,6 +64,7 @@ interface AniSearchMedia {
 
 interface AniDetailMedia {
   id: number;
+  idMal: number | null; // MyAnimeList id — used to enrich episodes via Jikan (lib/jikan.ts); not every AniList entry is mapped, so this can be null
   title: AniTitle;
   coverImage: { extraLarge: string | null; large: string | null } | null;
   bannerImage: string | null;
@@ -121,6 +122,7 @@ const DETAIL_QUERY = `
 query ($id: Int) {
   Media(id: $id, type: ANIME) {
     id
+    idMal
     title { romaji english native }
     coverImage { extraLarge large }
     bannerImage
@@ -169,7 +171,11 @@ export async function searchAnime(query: string): Promise<SearchResult[]> {
 
 export async function getAnimeTitle(
   id: string,
-): Promise<{ title: NormalizedTitle; episodes: NormalizedEpisode[] }> {
+): Promise<{
+  title: NormalizedTitle;
+  episodes: NormalizedEpisode[];
+  malId: number | null;
+}> {
   const data = await anilist<{ Media: AniDetailMedia }>(DETAIL_QUERY, {
     id: Number(id),
   });
@@ -220,12 +226,16 @@ export async function getAnimeTitle(
       seasonNumber: 1, // anime tracked with absolute numbering
       episodeNumber: ep,
       absoluteNumber: ep,
-      name: null,
+      // name/overview intentionally omitted (left undefined), not set to
+      // null: AniList has neither field, and getAnimeCredits/enrichAnimeEpisodes
+      // (lib/jikan.ts, via catalog.ts) fill them in separately. Leaving these
+      // keys out lets upsertTitleAndEpisodes skip them entirely so a refresh
+      // never clobbers a name/synopsis Jikan already wrote with null.
       airDate: airDateByEpisode.get(ep) ?? null,
     });
   }
 
-  return { title, episodes };
+  return { title, episodes, malId: m.idMal ?? null };
 }
 
 // Creators + top cast (voice actors) for the detail screen. Fetched
