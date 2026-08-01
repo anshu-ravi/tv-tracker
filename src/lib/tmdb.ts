@@ -1,5 +1,6 @@
 import "server-only";
 import type {
+  MediaType,
   NormalizedEpisode,
   NormalizedTitle,
   SearchResult,
@@ -52,6 +53,13 @@ interface TmdbSearchTvResult {
   first_air_date: string | null;
   poster_path: string | null;
   overview: string | null;
+  // Used only for anime classification (see classifyTmdbSearchResult below).
+  // Optional: TMDB's search endpoint normally includes these, but that's not
+  // guaranteed for every result, so the classifier must not assume they're
+  // present.
+  genre_ids?: number[];
+  origin_country?: string[];
+  original_language?: string;
 }
 
 interface TmdbTv {
@@ -94,8 +102,40 @@ interface TmdbCredits {
 
 const RUNNING_STATUSES = ["Returning Series", "In Production", "Planned"];
 
+// TMDB's genre id for "Animation" (stable across the API, not fetched).
+const ANIMATION_GENRE_ID = 16;
+
+// ---- anime classification heuristic -----------------------------------
+//
+// TMDB has no dedicated "anime" media type — everything animated-or-not is
+// just `tv`. As part of the AniList -> TMDB migration for anime (see
+// context.md / CLAUDE.md), search results are classified as anime using the
+// common working definition: Japanese-origin animation. A result counts as
+// anime when it BOTH (a) carries the Animation genre (id 16) and (b) is
+// Japanese-origin — `origin_country` includes "JP", or, for older/library
+// titles where TMDB search leaves `origin_country` empty, falls back to
+// `original_language === "ja"`.
+//
+// This is a heuristic, not ground truth: it will misclassify Japanese-made
+// non-animation (rejected — no genre 16) as tv (correct), Japanese/foreign
+// co-productions inconsistently, and non-Japanese animation as tv even if
+// it's stylistically "anime-like". Kept as one small, well-commented
+// function so it's easy to find and tune later if misclassifications show
+// up in practice.
+function classifyTmdbSearchResult(r: TmdbSearchTvResult): MediaType {
+  const isAnimation = (r.genre_ids ?? []).includes(ANIMATION_GENRE_ID);
+  const isJapaneseOrigin =
+    (r.origin_country ?? []).includes("JP") || r.original_language === "ja";
+  return isAnimation && isJapaneseOrigin ? "anime" : "tv";
+}
+
 // ---- public API -------------------------------------------------------------
 
+// Searches TMDB's /search/tv and classifies each result as "tv" or "anime"
+// (see classifyTmdbSearchResult) — TMDB is now the sole search/add source
+// for anime as well as TV (AniList is retired for search; lib/anilist.ts
+// stays intact only to serve titles still `source = 'anilist'` in the DB
+// during the migration).
 export async function searchTv(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
   const data = await tmdb<{ results: TmdbSearchTvResult[] }>("/search/tv", {
@@ -105,7 +145,7 @@ export async function searchTv(query: string): Promise<SearchResult[]> {
   return data.results.slice(0, 12).map((r) => ({
     source: "tmdb",
     sourceId: String(r.id),
-    mediaType: "tv",
+    mediaType: classifyTmdbSearchResult(r),
     title: r.name,
     year: r.first_air_date ? Number(r.first_air_date.slice(0, 4)) : null,
     posterUrl: img(r.poster_path),
@@ -115,15 +155,21 @@ export async function searchTv(query: string): Promise<SearchResult[]> {
 
 export async function getTvTitle(
   id: string,
-  opts: { fresh?: boolean } = {},
+  // `mediaType` lets a caller fetch the exact same TMDB show as either "tv"
+  // or "anime" — anime is now TMDB-sourced too (see classifyTmdbSearchResult
+  // above), but still keeps its own media_type so it stays in the Anime
+  // library tab and filler tags keep working. Defaults to "tv" for the
+  // existing TV call sites.
+  opts: { fresh?: boolean; mediaType?: MediaType } = {},
 ): Promise<{ title: NormalizedTitle; episodes: NormalizedEpisode[] }> {
+  const mediaType = opts.mediaType ?? "tv";
   const tv = await tmdb<TmdbTv>(`/tv/${id}`, {}, opts);
   const next = tv.next_episode_to_air;
 
   const title: NormalizedTitle = {
     source: "tmdb",
     sourceId: String(tv.id),
-    mediaType: "tv",
+    mediaType,
     title: tv.name,
     originalTitle: tv.original_name,
     posterUrl: img(tv.poster_path),
@@ -144,6 +190,12 @@ export async function getTvTitle(
     (s) => s.season_number > 0 && s.episode_count > 0,
   );
   const episodes: NormalizedEpisode[] = [];
+  // Anime keeps an absolute_number (1..N across all real seasons, broadcast
+  // order) so filler-tag lookups (lib/animefillerlist.ts) and any
+  // still-un-migrated absolute-numbered rows stay comparable. TV titles
+  // never had absolute numbering and don't get one here either — the
+  // counter only advances/is used when mediaType is "anime".
+  let absoluteCounter = 0;
   for (const s of seasons) {
     const sd = await tmdb<{ episodes: TmdbEpisode[] }>(
       `/tv/${id}/season/${s.season_number}`,
@@ -151,9 +203,11 @@ export async function getTvTitle(
       opts,
     );
     for (const e of sd.episodes) {
+      absoluteCounter += 1;
       episodes.push({
         seasonNumber: e.season_number,
         episodeNumber: e.episode_number,
+        absoluteNumber: mediaType === "anime" ? absoluteCounter : null,
         name: e.name,
         overview: e.overview,
         airDate: e.air_date || null,

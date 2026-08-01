@@ -271,7 +271,6 @@ export default async function TitleDetailPage({
 
         <EpisodeSection
           titleId={title.id}
-          mediaType={title.media_type}
           seasons={seasons}
           initialWatchedIds={Array.from(watchedIds)}
         />

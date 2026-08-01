@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import EpisodeTick from "@/components/EpisodeTick";
 import SeasonControls from "@/components/SeasonControls";
 import FillerTag, { type FillerType } from "@/components/FillerTag";
-import type { MediaType } from "@/lib/types";
 
 export interface SeasonEpisode {
   id: string;
@@ -31,12 +30,10 @@ export interface SeasonGroup {
 // child's own useState would ignore.
 export default function EpisodeSection({
   titleId,
-  mediaType,
   seasons,
   initialWatchedIds,
 }: {
   titleId: string;
-  mediaType: MediaType;
   seasons: SeasonGroup[];
   initialWatchedIds: string[];
 }) {
@@ -149,7 +146,6 @@ export default function EpisodeSection({
   const allWatchedInSeason =
     activeSeason.episodes.length > 0 &&
     activeSeason.episodes.every((ep) => watched.has(ep.id));
-  const isAnime = mediaType === "anime";
   // Long-running shows (anime especially) can dump hundreds of episodes into
   // one season — cap the list to a fixed-height scrollbox instead of letting
   // the page grow forever. ~8 rows fit before scrolling kicks in.
@@ -159,10 +155,12 @@ export default function EpisodeSection({
   return (
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        {isAnime || seasons.length <= 1 ? (
+        {seasons.length <= 1 ? (
           // page.tsx already renders the "Episodes" <h2> section header —
           // no label needed here, just keep the spacer so the mark-season
-          // button stays pinned right via justify-between.
+          // button stays pinned right via justify-between. Anime rows the
+          // TMDB migration hasn't reached yet only ever have one season, so
+          // they naturally land here too — no isAnime check needed.
           <span />
         ) : (
           <select
@@ -191,9 +189,9 @@ export default function EpisodeSection({
         }`}
       >
         {activeSeason.episodes.map((ep) => {
-          const epLabel = isAnime
-            ? `E${ep.absoluteNumber ?? ep.episodeNumber}`
-            : `E${ep.episodeNumber}`;
+          // Season is already implied by the dropdown/header above, so this
+          // stays just "E{n}" for every media type — same as TV.
+          const epLabel = `E${ep.episodeNumber}`;
           const isExpanded = expandedId === ep.id;
           return (
             <li key={ep.id} className="px-3 py-2">

@@ -37,14 +37,29 @@ function formatDate(iso: string | null | undefined): string | null {
 // the real /title/:id page.
 export default async function PreviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ source: string; sourceId: string }>;
+  searchParams: Promise<{ mediaType?: string }>;
 }) {
   const { source, sourceId } = await params;
+  const { mediaType: mediaTypeParam } = await searchParams;
 
   if (source !== "tmdb" && source !== "anilist") notFound();
   const dataSource = source as DataSource;
-  const mediaType: MediaType = dataSource === "tmdb" ? "tv" : "anime";
+  // TMDB no longer implies "tv" — it's also the source for anime now (see
+  // classifyTmdbSearchResult in lib/tmdb.ts), and TMDB's own id space
+  // doesn't distinguish the two, so the search result link carries
+  // ?mediaType=... explicitly (see SearchResultCard). anilist source is
+  // always anime (that provider only ever served anime). Fall back to "tv"
+  // for a bare/bookmarked tmdb link with no query param — the more common
+  // case by far.
+  const mediaType: MediaType =
+    dataSource === "anilist"
+      ? "anime"
+      : mediaTypeParam === "anime"
+        ? "anime"
+        : "tv";
 
   // Cheap existing-library check first: if this title is already tracked,
   // send the user straight to the real (writable, DB-backed) detail page
@@ -70,7 +85,9 @@ export default async function PreviewPage({
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
   try {
     fetched =
-      dataSource === "tmdb" ? await getTvTitle(sourceId) : await getAnimeTitle(sourceId);
+      dataSource === "tmdb"
+        ? await getTvTitle(sourceId, { mediaType })
+        : await getAnimeTitle(sourceId);
   } catch (err) {
     console.error("Failed to fetch live title for preview:", err);
     notFound();
@@ -190,7 +207,7 @@ export default async function PreviewPage({
 
       <div className="mt-6 px-4">
         <h2 className="display text-xl">Episodes</h2>
-        <PreviewEpisodeList mediaType={mediaType} seasons={seasons} />
+        <PreviewEpisodeList seasons={seasons} />
       </div>
     </div>
   );
