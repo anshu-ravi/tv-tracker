@@ -55,7 +55,9 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
     Tapping the "Up next" line **expands that episode's description inline**. Upcoming
     lists running shows with a soon episode + not-yet-released watchlist titles, each
     with an **"airs in N days"** badge (`UpcomingCard`), sorted soonest-first.
-  - **TV / Anime**: poster grids split into the 4 buckets, DNF muted.
+  - **TV / Anime**: poster grids split into the 4 buckets, DNF muted. Each card
+    carries the compact `TitleActionBar` (status / add-to-list / favorite icons);
+    favorited state is batch-computed server-side (`src/lib/favorites.ts`).
     **Watchlist**: two **swipeable carousels** (TV + Anime, native scroll-snap) via
     `WatchlistCarousel`, not a grid. **Search**: **live debounced search-as-you-type**
     (`SearchClient` — 350ms debounce, 2-char min, AbortController cancellation; no more
@@ -68,7 +70,9 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
     render read-only (`PreviewEpisodeList`).
   - **Lists** (`/lists`, 6th bottom-tab): favorites-first collections with poster
     thumbnails + inline create; `/lists/[listId]` is a poster grid with per-title
-    remove and list rename/delete (guarded for the reserved Favorites list).
+    remove, list rename/delete (guarded for Favorites), an **"＋ Add shows" picker**
+    (add any already-tracked title, filterable) and an **All/TV/Anime/Movie
+    media-type filter** over the grid (`AddToListPicker`, `ListTitlesView`).
   - **Detail** (`/title/[titleId]`): backdrop/poster/overview, **creator + cast**
     (live from TMDB/AniList), **IMDb / Rotten Tomatoes / AniList rating chips**
     (`RatingBadges`, live from `ratings.ts`), a **`TitleActionBar`** — three icon
