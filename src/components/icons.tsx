@@ -69,6 +69,25 @@ export function CheckIcon({ className }: { className?: string }) {
   );
 }
 
+export function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M4 12a8 8 0 0 1 13.66-5.66L20 8.5" />
+      <path d="M20 4v4.5h-4.5" />
+      <path d="M20 12a8 8 0 0 1-13.66 5.66L4 15.5" />
+      <path d="M4 20v-4.5h4.5" />
+    </svg>
+  );
+}
+
 // Bottom-nav icons (Home / Library / Search / Account).
 
 export function HomeIcon({ className }: { className?: string }) {

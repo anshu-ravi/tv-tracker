@@ -21,6 +21,10 @@ function authHeaders(): HeadersInit {
 async function tmdb<T>(
   path: string,
   params: Record<string, string | number> = {},
+  // Refreshing a title we already have (see catalog.ts refreshCatalogTitle)
+  // needs to see TMDB's current data, not whatever Next cached up to an hour
+  // ago — pass `{ fresh: true }` to bypass the revalidate cache for that path.
+  opts: { fresh?: boolean } = {},
 ): Promise<T> {
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) {
@@ -28,7 +32,9 @@ async function tmdb<T>(
   }
   const res = await fetch(url, {
     headers: authHeaders(),
-    next: { revalidate: 60 * 60 }, // cache metadata for an hour
+    ...(opts.fresh
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 60 * 60 } }), // cache metadata for an hour
   });
   if (!res.ok) throw new Error(`TMDB ${path} failed: ${res.status}`);
   return res.json() as Promise<T>;
@@ -109,8 +115,9 @@ export async function searchTv(query: string): Promise<SearchResult[]> {
 
 export async function getTvTitle(
   id: string,
+  opts: { fresh?: boolean } = {},
 ): Promise<{ title: NormalizedTitle; episodes: NormalizedEpisode[] }> {
-  const tv = await tmdb<TmdbTv>(`/tv/${id}`);
+  const tv = await tmdb<TmdbTv>(`/tv/${id}`, {}, opts);
   const next = tv.next_episode_to_air;
 
   const title: NormalizedTitle = {
@@ -140,6 +147,8 @@ export async function getTvTitle(
   for (const s of seasons) {
     const sd = await tmdb<{ episodes: TmdbEpisode[] }>(
       `/tv/${id}/season/${s.season_number}`,
+      {},
+      opts,
     );
     for (const e of sd.episodes) {
       episodes.push({

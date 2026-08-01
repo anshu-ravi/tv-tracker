@@ -4,6 +4,12 @@
 // details from the matching provider and upserting titles + episodes if the
 // title isn't already known. Extracted from the original inline logic in
 // src/app/api/titles/route.ts — behavior is unchanged.
+//
+// refreshCatalogTitle (below) shares the same upsert path but starts from an
+// existing titles.id instead of a provider triple, re-fetching from whatever
+// provider that title already came from. Used to backfill catalog rows that
+// were only partially populated (e.g. the one-time Trakt import only wrote
+// episodes the user had actually watched — see scripts/refresh-catalog/).
 import { getAnimeTitle } from "@/lib/anilist";
 import { getTvTitle } from "@/lib/tmdb";
 import type {
@@ -29,29 +35,20 @@ export type EnsureCatalogTitleResult =
   | { titleId: string }
   | { error: string; status: number };
 
-export async function ensureCatalogTitle(
+// Upserts the catalog title row (unique on source, source_id) and its
+// episodes (unique on title_id, season_number, episode_number) from an
+// already-fetched provider response. Shared by ensureCatalogTitle (new or
+// existing title, resolved from a provider triple) and refreshCatalogTitle
+// (an existing titles.id, re-fetched) so the write path only lives once.
+async function upsertTitleAndEpisodes(
   supabase: SupabaseClient,
-  { source, sourceId, mediaType }: EnsureCatalogTitleInput,
-): Promise<EnsureCatalogTitleResult> {
-  if (!sourceId) {
-    return { error: "source, sourceId, and mediaType are required", status: 400 };
-  }
-
-  // Only tv (via TMDB) and anime (via AniList) are wired up today — movies
-  // are reserved in the schema but have no provider client yet.
-  let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
-  if (mediaType === "tv" && source === "tmdb") {
-    fetched = await getTvTitle(sourceId);
-  } else if (mediaType === "anime" && source === "anilist") {
-    fetched = await getAnimeTitle(sourceId);
-  } else {
-    return { error: "Unsupported source/mediaType combination", status: 400 };
-  }
-
+  fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] },
+): Promise<
+  | { titleId: string; title: NormalizedTitle; episodesUpserted: number }
+  | { error: string; status: number }
+> {
   const { title, episodes } = fetched;
 
-  // Upsert the catalog title row (unique on source, source_id) so re-adding
-  // an already-known show just refreshes its metadata.
   const { data: titleRow, error: titleError } = await supabase
     .from("titles")
     .upsert(
@@ -83,8 +80,9 @@ export async function ensureCatalogTitle(
 
   const titleId = titleRow.id as string;
 
-  // Upsert episodes for this title (unique on title_id, season_number,
-  // episode_number). Anime rows carry absoluteNumber and use season 1.
+  // Upsert episodes for this title. Anime rows carry absoluteNumber and use
+  // season 1. A refresh can add whole new seasons here (that's the point —
+  // the original Trakt import only wrote episodes the user had watched).
   if (episodes.length > 0) {
     const episodeRows = episodes.map((ep) => ({
       title_id: titleId,
@@ -110,5 +108,88 @@ export async function ensureCatalogTitle(
     }
   }
 
-  return { titleId };
+  return { titleId, title, episodesUpserted: episodes.length };
+}
+
+export async function ensureCatalogTitle(
+  supabase: SupabaseClient,
+  { source, sourceId, mediaType }: EnsureCatalogTitleInput,
+): Promise<EnsureCatalogTitleResult> {
+  if (!sourceId) {
+    return { error: "source, sourceId, and mediaType are required", status: 400 };
+  }
+
+  // Only tv (via TMDB) and anime (via AniList) are wired up today — movies
+  // are reserved in the schema but have no provider client yet.
+  let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
+  if (mediaType === "tv" && source === "tmdb") {
+    fetched = await getTvTitle(sourceId);
+  } else if (mediaType === "anime" && source === "anilist") {
+    fetched = await getAnimeTitle(sourceId);
+  } else {
+    return { error: "Unsupported source/mediaType combination", status: 400 };
+  }
+
+  const result = await upsertTitleAndEpisodes(supabase, fetched);
+  if ("error" in result) return result;
+  return { titleId: result.titleId };
+}
+
+// ---- refresh -----------------------------------------------------------
+
+export type RefreshCatalogTitleResult =
+  | { titleId: string; title: string; episodesUpserted: number }
+  | { error: string; status: number };
+
+interface TitleLookupRow {
+  source: DataSource;
+  source_id: string;
+  media_type: MediaType;
+}
+
+// Re-fetches a title already in the catalog from its provider and re-runs
+// the upsert. Used both by POST /api/titles/refresh and the standalone
+// scripts/refresh-catalog/ tool to backfill titles the Trakt import only
+// partially populated (it only wrote episodes the user had watched, so
+// unwatched seasons/episodes — and sometimes whole seasons — are missing).
+export async function refreshCatalogTitle(
+  supabase: SupabaseClient,
+  titleId: string,
+): Promise<RefreshCatalogTitleResult> {
+  const { data, error } = await supabase
+    .from("titles")
+    .select("source, source_id, media_type")
+    .eq("id", titleId)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error("Failed to look up title for refresh:", error);
+    return { error: "Title not found", status: 404 };
+  }
+
+  const row = data as TitleLookupRow;
+
+  let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
+  try {
+    if (row.media_type === "tv" && row.source === "tmdb") {
+      // { fresh: true } bypasses TMDB's hour-long HTTP cache (see
+      // lib/tmdb.ts) — a refresh exists specifically to see current data.
+      fetched = await getTvTitle(row.source_id, { fresh: true });
+    } else if (row.media_type === "anime" && row.source === "anilist") {
+      fetched = await getAnimeTitle(row.source_id);
+    } else {
+      return { error: "Unsupported source/mediaType combination", status: 400 };
+    }
+  } catch (err) {
+    console.error("Failed to fetch title from provider for refresh:", err);
+    return { error: "Failed to fetch title from provider", status: 502 };
+  }
+
+  const result = await upsertTitleAndEpisodes(supabase, fetched);
+  if ("error" in result) return result;
+  return {
+    titleId: result.titleId,
+    title: result.title.title,
+    episodesUpserted: result.episodesUpserted,
+  };
 }
