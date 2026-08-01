@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import PosterCard, { type PosterCardTitle } from "@/components/PosterCard";
+import { type PosterCardTitle } from "@/components/PosterCard";
+import WatchlistCarousel from "@/components/WatchlistCarousel";
 import type { MediaType } from "@/lib/types";
 
 interface TitleRow {
@@ -13,8 +14,9 @@ interface UserTitleRow {
   titles: TitleRow | null;
 }
 
-// The `watchlist` bucket across both media types (TV + anime) as a single
-// poster grid — unlike the TV/Anime tabs, this isn't split into buckets.
+// The `watchlist` bucket across both media types (TV + anime) — split into
+// two horizontally-swipeable carousels (one per media_type) rather than the
+// single combined grid the TV/Anime tabs use for their buckets.
 export default async function WatchlistPage() {
   const supabase = await createClient();
 
@@ -34,19 +36,21 @@ export default async function WatchlistPage() {
       mediaType: r.titles.media_type,
     }));
 
+  const tvTitles = titles.filter((t) => t.mediaType === "tv");
+  const animeTitles = titles.filter((t) => t.mediaType === "anime");
+
   return (
-    <div className="px-4 py-6">
-      <h1 className="display mb-4 text-3xl">Watchlist</h1>
+    <div className="py-6">
+      <h1 className="display mb-2 px-4 text-3xl">Watchlist</h1>
       {titles.length === 0 ? (
-        <p className="card-bold px-4 py-8 text-center text-sm text-ink-soft">
+        <p className="card-bold mx-4 px-4 py-8 text-center text-sm text-ink-soft">
           Nothing saved yet. Add shows from Search.
         </p>
       ) : (
-        <div className="grid grid-cols-3 gap-2">
-          {titles.map((title) => (
-            <PosterCard key={title.id} title={title} status="watchlist" />
-          ))}
-        </div>
+        <>
+          <WatchlistCarousel heading="TV" titles={tvTitles} />
+          <WatchlistCarousel heading="Anime" titles={animeTitles} />
+        </>
       )}
     </div>
   );
