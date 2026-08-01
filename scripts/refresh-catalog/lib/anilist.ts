@@ -37,6 +37,7 @@ interface AniTitle {
 
 interface AniDetailMedia {
   id: number;
+  idMal: number | null; // MyAnimeList id, used to enrich episodes via Jikan (lib/jikan.ts)
   title: AniTitle;
   coverImage: { extraLarge: string | null; large: string | null } | null;
   bannerImage: string | null;
@@ -68,6 +69,7 @@ const DETAIL_QUERY = `
 query ($id: Int) {
   Media(id: $id, type: ANIME) {
     id
+    idMal
     title { romaji english native }
     coverImage { extraLarge large }
     bannerImage
@@ -114,7 +116,11 @@ async function anilistFetch<T>(
 
 export async function getAnimeTitle(
   anilistId: string,
-): Promise<{ title: NormalizedTitle; episodes: NormalizedEpisode[] }> {
+): Promise<{
+  title: NormalizedTitle;
+  episodes: NormalizedEpisode[];
+  malId: number | null;
+}> {
   const data = await anilistFetch<{ Media: AniDetailMedia }>(DETAIL_QUERY, {
     id: Number(anilistId),
   });
@@ -161,5 +167,5 @@ export async function getAnimeTitle(
     });
   }
 
-  return { title, episodes };
+  return { title, episodes, malId: m.idMal ?? null };
 }

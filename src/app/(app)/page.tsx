@@ -212,6 +212,23 @@ export default async function HomePage() {
 
     const nextEpisodeOverview = nextEpisode.overview ?? null;
 
+    // TV-only: scope progress to the season of the next-unwatched episode
+    // (anime keeps its existing absolute-numbered total — always season 1,
+    // so a season split wouldn't tell the user anything new). "22 / 26"
+    // series-wide means little to a viewer mid-season; "S3 · 5 / 8" says
+    // exactly where they are.
+    let seasonNumber: number | null = null;
+    let seasonWatchedCount: number | null = null;
+    let seasonTotalCount: number | null = null;
+    if (title.media_type === "tv") {
+      seasonNumber = nextEpisode.season_number;
+      const seasonEpisodes = titleEpisodes.filter(
+        (e) => e.season_number === nextEpisode.season_number,
+      );
+      seasonWatchedCount = seasonEpisodes.filter((e) => watchedIds.has(e.id)).length;
+      seasonTotalCount = seasonEpisodes.length;
+    }
+
     // Days since the next-unwatched episode aired (0 or negative for an
     // episode with no air_date, since that's treated as available now).
     // Past the threshold, this show has been neglected long enough to move
@@ -233,6 +250,9 @@ export default async function HomePage() {
       nextEpisodeOverview,
       nextEpisodeAirDate: nextEpisode.air_date,
       bucket,
+      seasonNumber,
+      seasonWatchedCount,
+      seasonTotalCount,
     };
     })
     .filter((card): card is WatchingCardData => card !== null);

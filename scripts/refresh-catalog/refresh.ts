@@ -20,6 +20,13 @@ import { createClient } from "@supabase/supabase-js";
 import { loadEnv } from "./lib/env";
 import { getTvTitle } from "./lib/tmdb";
 import { getAnimeTitle } from "./lib/anilist";
+import { getEpisodeSynopsis, getEpisodeTitles } from "./lib/jikan";
+
+// See src/lib/api/catalog.ts's enrichAnimeEpisodes for the full rationale —
+// this mirrors that logic for the standalone script. Synopses are one Jikan
+// request per episode with no bulk endpoint, so they're capped per run and
+// converge over repeated runs of this script.
+const MAX_SYNOPSIS_PER_RUN = 100;
 
 interface TrackedTitleRow {
   title_id: string;
@@ -30,6 +37,61 @@ interface TrackedTitleRow {
     media_type: "tv" | "anime" | "movie";
     title: string;
   } | null;
+}
+
+interface EpisodeEnrichmentRow {
+  id: string;
+  episode_number: number;
+  name: string | null;
+  overview: string | null;
+}
+
+// Best-effort: backfills episode name/synopsis from Jikan for one anime
+// title, targeted UPDATEs only (never touches rows/fields it has no new
+// value for), so a good existing name/overview is never overwritten with
+// null. Any failure here is logged and swallowed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function enrichAnimeEpisodes(supabase: any, titleId: string, malId: number | null) {
+  if (!malId) return;
+  try {
+    const { data, error } = await supabase
+      .from("episodes")
+      .select("id, episode_number, name, overview")
+      .eq("title_id", titleId)
+      .eq("season_number", 1);
+    if (error || !data) {
+      console.error("  Jikan enrichment: failed to load episodes:", error?.message);
+      return;
+    }
+    const rows = data as EpisodeEnrichmentRow[];
+    if (rows.length === 0) return;
+
+    const titleMap = await getEpisodeTitles(malId);
+    for (const row of rows) {
+      const title = titleMap.get(row.episode_number);
+      if (!title || row.name) continue;
+      const { error: updateError } = await supabase.from("episodes").update({ name: title }).eq("id", row.id);
+      if (updateError) console.error("  Jikan enrichment: failed to update name:", updateError.message);
+    }
+
+    const missingOverview = rows
+      .filter((r) => !r.overview)
+      .sort((a, b) => a.episode_number - b.episode_number)
+      .slice(0, MAX_SYNOPSIS_PER_RUN);
+
+    for (const row of missingOverview) {
+      const synopsis = await getEpisodeSynopsis(malId, row.episode_number);
+      if (!synopsis) continue;
+      const { error: updateError } = await supabase.from("episodes").update({ overview: synopsis }).eq("id", row.id);
+      if (updateError) console.error("  Jikan enrichment: failed to update overview:", updateError.message);
+    }
+
+    if (titleMap.size > 0 || missingOverview.length > 0) {
+      console.log(`        Jikan: filled ${titleMap.size} title(s) fetched, up to ${missingOverview.length} synopsis lookup(s)`);
+    }
+  } catch (err) {
+    console.error("  Jikan enrichment failed:", err);
+  }
 }
 
 async function main() {
@@ -79,6 +141,7 @@ async function main() {
       }
 
       const { title, episodes } = fetched;
+      const malId = "malId" in fetched ? fetched.malId : null;
 
       const { error: titleError } = await supabase
         .from("titles")
@@ -99,13 +162,19 @@ async function main() {
       if (titleError) throw new Error(titleError.message);
 
       if (episodes.length > 0) {
+        // Anime episodes (this script's NormalizedEpisode, unlike TMDB's) have
+        // no name/overview fields at all — AniList doesn't provide them, they
+        // come from the Jikan enrichment pass below instead. Only include the
+        // key when the provider actually gave us a value, so this upsert never
+        // overwrites a name/overview that Jikan enrichment already wrote in a
+        // previous run with a null.
         const episodeRows = episodes.map((ep) => ({
           title_id: t.id,
           season_number: ep.seasonNumber,
           episode_number: ep.episodeNumber,
           absolute_number: "absoluteNumber" in ep ? (ep.absoluteNumber ?? null) : null,
-          name: "name" in ep ? (ep.name ?? null) : null,
-          overview: "overview" in ep ? (ep.overview ?? null) : null,
+          ...("name" in ep ? { name: ep.name ?? null } : {}),
+          ...("overview" in ep ? { overview: ep.overview ?? null } : {}),
           air_date: ep.airDate,
           still_url: "stillUrl" in ep ? (ep.stillUrl ?? null) : null,
           runtime: "runtime" in ep ? (ep.runtime ?? null) : null,
@@ -116,6 +185,10 @@ async function main() {
           .upsert(episodeRows, { onConflict: "title_id,season_number,episode_number" });
 
         if (episodesError) throw new Error(episodesError.message);
+      }
+
+      if (t.media_type === "anime") {
+        await enrichAnimeEpisodes(supabase, t.id, malId);
       }
 
       const seasonCount = new Set(episodes.map((ep) => ep.seasonNumber)).size;

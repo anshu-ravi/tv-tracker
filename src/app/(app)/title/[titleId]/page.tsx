@@ -189,10 +189,25 @@ export default async function TitleDetailPage({
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <h1 className="display text-2xl leading-tight">{title.title}</h1>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-            {[year, title.is_running ? "Running" : "Ended"]
-              .filter(Boolean)
-              .join(" · ")}
+          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+            {year && <span>{year}</span>}
+            {/* Below "completed", swap the plain running/ended text for the
+                same distinction the poster badge makes (see PosterCard):
+                "Ended" (genuinely over) vs. "Caught up" (current, but the
+                show will get more episodes). For any other status the plain
+                "Running"/"Ended" text is enough — a watchlist/watching
+                title is neither "ended" nor "caught up" yet. */}
+            {status === "completed" ? (
+              <span
+                className={`inline-block -rotate-3 border-2 border-ink px-1.5 py-0.5 text-[10px] font-bold normal-case tracking-normal ${
+                  title.is_running ? "bg-acid text-ink" : "bg-ink text-paper"
+                }`}
+              >
+                {title.is_running ? "Caught up" : "Ended"}
+              </span>
+            ) : (
+              <span>{title.is_running ? "Running" : "Ended"}</span>
+            )}
           </p>
           <TitleActionBar
             source={title.source}

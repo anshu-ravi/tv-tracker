@@ -16,6 +16,15 @@ export interface WatchingCardData {
   posterUrl: string | null;
   watchedCount: number;
   totalCount: number;
+  // Season-scoped counterparts to watchedCount/totalCount, computed
+  // server-side for TV titles only (see the Home page): watched vs. total
+  // episodes within the season of `nextEpisode`, so the card can show
+  // "S3 · 5 / 8" instead of a series-wide total that spans every season.
+  // Anime keeps absolute numbering (always season 1) and leaves these null,
+  // so the card falls back to watchedCount/totalCount unchanged.
+  seasonNumber: number | null;
+  seasonWatchedCount: number | null;
+  seasonTotalCount: number | null;
   // The earliest aired-but-unwatched episode's id, or null when there isn't
   // one — i.e. the finale-guard case ("All caught up").
   nextUnwatchedEpisodeId: string | null;
@@ -155,6 +164,17 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
   const realCaughtUp = !data.nextUnwatchedEpisodeId;
   const caughtUp = realCaughtUp || justMarked;
   const displayedCount = data.watchedCount + (justMarked ? 1 : 0);
+  // Season-scoped display, TV only (seasonTotalCount is null for anime —
+  // see WatchingCardData). The optimistic +1 from marking an episode
+  // watched applies to the season count too, same as the overall one above.
+  const hasSeasonProgress = data.seasonTotalCount !== null && data.seasonWatchedCount !== null;
+  const displayedSeasonCount = hasSeasonProgress
+    ? (data.seasonWatchedCount as number) + (justMarked ? 1 : 0)
+    : displayedCount;
+  const displayedTotalCount = hasSeasonProgress
+    ? (data.seasonTotalCount as number)
+    : data.totalCount;
+  const seasonLabel = hasSeasonProgress ? `S${data.seasonNumber}` : undefined;
 
   function dismissToast() {
     setToast(null);
@@ -237,7 +257,11 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
         <Link href={`/title/${data.titleId}`} className="block">
           <h3 className="display truncate text-lg">{data.title}</h3>
         </Link>
-        <ProgressBar watched={displayedCount} total={data.totalCount} />
+        <ProgressBar
+          watched={displayedSeasonCount}
+          total={displayedTotalCount}
+          seasonLabel={seasonLabel}
+        />
         {caughtUp ? (
           <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-soft">
             <span>All caught up</span>

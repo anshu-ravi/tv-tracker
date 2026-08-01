@@ -13,6 +13,11 @@ export interface PosterCardTitle {
   // callers that don't bother computing it (e.g. a bare tile with no
   // `status`); PosterCard treats it as `false` when absent.
   favorited?: boolean;
+  // Whether the provider still lists this title as ongoing (TMDB "Returning
+  // Series" / AniList "RELEASING", etc — see titles.is_running). Optional
+  // because only the completed-bucket badge below needs it; callers that
+  // don't fetch the column just omit it and the badge stays hidden.
+  isRunning?: boolean;
 }
 
 // A single poster tile for the TV/Anime/Watchlist grids. `muted` dims a DNF
@@ -38,7 +43,7 @@ export default function PosterCard({
       <Link href={`/title/${title.id}`}>
         {/* overflow-hidden is scoped to the poster image only (not the whole
             card) so its rounded top corners stay clean. */}
-        <div className="aspect-[2/3] w-full overflow-hidden rounded-t-[11px] border-b-[3px] border-ink bg-panel">
+        <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-[11px] border-b-[3px] border-ink bg-panel">
           {title.posterUrl ? (
             <img
               src={title.posterUrl}
@@ -52,6 +57,22 @@ export default function PosterCard({
                 {title.title}
               </span>
             </div>
+          )}
+          {/* Completed-only badge distinguishing a show that's genuinely
+              over ("ENDED") from one the user is merely current on but that
+              will get more episodes later ("CAUGHT UP"). Bottom-left,
+              opposite corner from the kebab (top-right) so the two never
+              collide. Only rendered when the caller both passes `status`
+              (i.e. this tile is in a known bucket) and it's "completed" —
+              watching/watchlist/dnf tiles never show it. */}
+          {status === "completed" && title.isRunning !== undefined && (
+            <span
+              className={`absolute bottom-1.5 left-1.5 inline-block -rotate-3 border-2 border-ink px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ${
+                title.isRunning ? "bg-acid text-ink" : "bg-ink text-paper"
+              }`}
+            >
+              {title.isRunning ? "Caught up" : "Ended"}
+            </span>
           )}
         </div>
         <p className="truncate px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide">
