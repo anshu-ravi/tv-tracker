@@ -34,7 +34,15 @@ export default async function AppLayout({
         </div>
       </header>
 
-      <main className="flex-1 pb-24">{children}</main>
+      {/* Bottom padding clears the floating BottomNav (its own height, the
+          gap it floats above the edge by, and the iOS safe-area inset) so
+          page content never sits behind it. */}
+      <main
+        className="flex-1"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6rem)" }}
+      >
+        {children}
+      </main>
 
       <BottomNav />
     </div>

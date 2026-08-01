@@ -30,6 +30,7 @@ export const viewport: Viewport = {
   themeColor: "#f3eedf",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -42,7 +43,7 @@ export default function RootLayout({
       lang="en"
       className={`${archivo.variable} ${archivoBlack.variable} h-full antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full overflow-x-hidden">{children}</body>
     </html>
   );
 }
