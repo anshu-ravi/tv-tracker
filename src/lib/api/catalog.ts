@@ -275,12 +275,18 @@ export async function ensureCatalogTitle(
     return { error: "source, sourceId, and mediaType are required", status: 400 };
   }
 
-  // Only tv (via TMDB) and anime (via AniList) are wired up today — movies
-  // are reserved in the schema but have no provider client yet.
+  // tv is TMDB-only. anime is TMDB-only for new adds (search now only
+  // returns tmdb-sourced anime — see classifyTmdbSearchResult in lib/tmdb.ts)
+  // but the anilist branch stays so a title still `source = 'anilist'` in
+  // the DB (not yet flipped by the migration tool) can still be re-added /
+  // re-resolved via a stale preview link. Movies are reserved in the schema
+  // but have no provider client yet.
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
   let malId: number | null = null;
   if (mediaType === "tv" && source === "tmdb") {
     fetched = await getTvTitle(sourceId);
+  } else if (mediaType === "anime" && source === "tmdb") {
+    fetched = await getTvTitle(sourceId, { mediaType: "anime" });
   } else if (mediaType === "anime" && source === "anilist") {
     const anime = await getAnimeTitle(sourceId);
     fetched = anime;
@@ -343,6 +349,11 @@ export async function refreshCatalogTitle(
       // { fresh: true } bypasses TMDB's hour-long HTTP cache (see
       // lib/tmdb.ts) — a refresh exists specifically to see current data.
       fetched = await getTvTitle(row.source_id, { fresh: true });
+    } else if (row.media_type === "anime" && row.source === "tmdb") {
+      // Migrated anime (or anything newly added post-migration) — same TMDB
+      // path as tv, just with mediaType: "anime" so absolute_number keeps
+      // getting (re)computed for filler-tag lookups.
+      fetched = await getTvTitle(row.source_id, { fresh: true, mediaType: "anime" });
     } else if (row.media_type === "anime" && row.source === "anilist") {
       const anime = await getAnimeTitle(row.source_id);
       fetched = anime;

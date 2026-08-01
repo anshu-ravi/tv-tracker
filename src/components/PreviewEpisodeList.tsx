@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import FillerTag, { type FillerType } from "@/components/FillerTag";
-import type { MediaType } from "@/lib/types";
 
 export interface PreviewEpisode {
   episodeNumber: number;
@@ -23,10 +22,8 @@ export interface PreviewSeasonGroup {
 // ticks off of. Same season dropdown + click-to-expand overview UX, minus
 // any state that would need a database round trip.
 export default function PreviewEpisodeList({
-  mediaType,
   seasons,
 }: {
-  mediaType: MediaType;
   seasons: PreviewSeasonGroup[];
 }) {
   const [selectedSeason, setSelectedSeason] = useState<number | null>(
@@ -49,13 +46,12 @@ export default function PreviewEpisodeList({
 
   if (!activeSeason) return null;
 
-  const isAnime = mediaType === "anime";
   const SCROLL_THRESHOLD = 8;
   const needsScroll = activeSeason.episodes.length > SCROLL_THRESHOLD;
 
   return (
     <div className="mt-3">
-      {!isAnime && seasons.length > 1 && (
+      {seasons.length > 1 && (
         <div className="mb-2 flex justify-end">
           <select
             value={activeSeason.seasonNumber}
@@ -79,9 +75,9 @@ export default function PreviewEpisodeList({
       >
         {activeSeason.episodes.map((ep) => {
           const key = `${activeSeason.seasonNumber}-${ep.episodeNumber}`;
-          const epLabel = isAnime
-            ? `E${ep.absoluteNumber ?? ep.episodeNumber}`
-            : `E${ep.episodeNumber}`;
+          // Season is already implied by the dropdown/header above, so this
+          // stays just "E{n}" for every media type — same as TV.
+          const epLabel = `E${ep.episodeNumber}`;
           const isExpanded = expanded === key;
           return (
             <li key={key} className="px-3 py-2">

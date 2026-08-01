@@ -17,11 +17,12 @@ export interface WatchingCardData {
   watchedCount: number;
   totalCount: number;
   // Season-scoped counterparts to watchedCount/totalCount, computed
-  // server-side for TV titles only (see the Home page): watched vs. total
+  // server-side for every media type (see the Home page): watched vs. total
   // episodes within the season of `nextEpisode`, so the card can show
-  // "S3 · 5 / 8" instead of a series-wide total that spans every season.
-  // Anime keeps absolute numbering (always season 1) and leaves these null,
-  // so the card falls back to watchedCount/totalCount unchanged.
+  // "S3 · 5 / 8" instead of a series-wide total that spans every season. For
+  // anime rows the TMDB migration hasn't reached yet, every episode is still
+  // season 1, so this just reduces to "S1 · watchedCount / totalCount" — the
+  // fields stay non-null either way now that anime has real seasons too.
   seasonNumber: number | null;
   seasonWatchedCount: number | null;
   seasonTotalCount: number | null;

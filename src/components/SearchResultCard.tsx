@@ -80,9 +80,12 @@ export default function SearchResultCard({
     </div>
   );
 
+  // The preview route can't tell tv from anime from a bare tmdb id (see the
+  // preview page) since both now come from the same provider, so carry the
+  // classified mediaType along as a query param.
   const posterHref = savedTitleId
     ? `/title/${savedTitleId}`
-    : `/preview/${result.source}/${result.sourceId}`;
+    : `/preview/${result.source}/${result.sourceId}?mediaType=${result.mediaType}`;
 
   return (
     <div className="card-bold overflow-hidden p-0">

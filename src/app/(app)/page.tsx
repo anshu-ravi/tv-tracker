@@ -198,10 +198,12 @@ export default async function HomePage() {
         ? fillerMap?.get(nextEpisode.absolute_number ?? nextEpisode.episode_number)?.type
         : undefined;
 
-    const nextEpisodeCode =
-      title.media_type === "anime"
-        ? `E${nextEpisode.absolute_number ?? nextEpisode.episode_number}`
-        : `S${nextEpisode.season_number}E${nextEpisode.episode_number}`;
+    // Anime now uses the same SxxEyy format as TV (owner decision — consistent
+    // naming across the app, see CLAUDE.md). This also degrades sensibly for
+    // anime rows the TMDB migration hasn't reached yet: those are still
+    // season_number 1 with episode_number === absolute_number, so it just
+    // renders "S1E43" instead of the old "E43" rather than needing a branch.
+    const nextEpisodeCode = `S${nextEpisode.season_number}E${nextEpisode.episode_number}`;
 
     const nextEpisodeName =
       title.media_type === "anime"
@@ -212,22 +214,21 @@ export default async function HomePage() {
 
     const nextEpisodeOverview = nextEpisode.overview ?? null;
 
-    // TV-only: scope progress to the season of the next-unwatched episode
-    // (anime keeps its existing absolute-numbered total — always season 1,
-    // so a season split wouldn't tell the user anything new). "22 / 26"
-    // series-wide means little to a viewer mid-season; "S3 · 5 / 8" says
-    // exactly where they are.
-    let seasonNumber: number | null = null;
-    let seasonWatchedCount: number | null = null;
-    let seasonTotalCount: number | null = null;
-    if (title.media_type === "tv") {
-      seasonNumber = nextEpisode.season_number;
-      const seasonEpisodes = titleEpisodes.filter(
-        (e) => e.season_number === nextEpisode.season_number,
-      );
-      seasonWatchedCount = seasonEpisodes.filter((e) => watchedIds.has(e.id)).length;
-      seasonTotalCount = seasonEpisodes.length;
-    }
+    // Scope progress to the season of the next-unwatched episode. Anime now
+    // gets this too (it has real seasons via the TMDB migration, same as
+    // TV) — "22 / 26" series-wide means little to a viewer mid-season,
+    // "S3 · 5 / 8" says exactly where they are. For anime rows the
+    // migration hasn't reached yet, every episode is still season 1, so
+    // this naturally reduces to the series-wide total — no separate branch
+    // needed.
+    const seasonNumber: number | null = nextEpisode.season_number;
+    const seasonEpisodes = titleEpisodes.filter(
+      (e) => e.season_number === nextEpisode.season_number,
+    );
+    const seasonWatchedCount: number | null = seasonEpisodes.filter((e) =>
+      watchedIds.has(e.id),
+    ).length;
+    const seasonTotalCount: number | null = seasonEpisodes.length;
 
     // Days since the next-unwatched episode aired (0 or negative for an
     // episode with no air_date, since that's treated as available now).
