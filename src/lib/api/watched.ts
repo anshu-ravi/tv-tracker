@@ -26,12 +26,20 @@ export async function markTitleWatched(
   }
 
   // Unique on (user_id, episode_id); ignoreDuplicates makes re-marking an
-  // already-watched episode a no-op. user_id is left out so the column
-  // default (auth.uid()) applies.
+  // already-watched episode a no-op — episodes the user already ticked off
+  // individually keep their real watched_at, since this upsert never touches
+  // them. user_id is left out so the column default (auth.uid()) applies.
+  //
+  // watched_at is explicitly NULL here rather than relying on the column's
+  // now() default: completing a title bulk-marks every remaining episode,
+  // and the user often does this retrospectively for a show they finished
+  // a while ago, so stamping "now" would be a fabricated date. NULL means
+  // "watched, but date unknown."
   const { error } = await supabase.from("watched_episodes").upsert(
     episodeIds.map((episodeId: string) => ({
       episode_id: episodeId,
       title_id: titleId,
+      watched_at: null,
     })),
     { onConflict: "user_id,episode_id", ignoreDuplicates: true },
   );
