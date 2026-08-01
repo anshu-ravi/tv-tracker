@@ -63,7 +63,9 @@ describe("PATCH /api/titles/:titleId/status", () => {
       status: "completed",
     });
 
-    const builder = fake.builders.user_titles[0];
+    // builders[0] is the pre-update current-status lookup, builders[1] is
+    // the actual update call.
+    const builder = fake.builders.user_titles[1];
     const update = builder.calls.find((c) => c.method === "update");
     expect(update?.args[0]).toEqual({ status: "completed" });
     const eqCalls = builder.calls.filter((c) => c.method === "eq");
@@ -71,6 +73,68 @@ describe("PATCH /api/titles/:titleId/status", () => {
       { method: "eq", args: ["title_id", "title-1"] },
       { method: "eq", args: ["user_id", "user-1"] },
     ]);
+  });
+
+  it("marks all episodes watched when the new status is completed", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        user_titles: {
+          data: { title_id: "title-1", status: "watching" },
+          error: null,
+        },
+        episodes: {
+          data: [{ id: "ep-1" }, { id: "ep-2" }],
+          error: null,
+        },
+        watched_episodes: { data: null, error: null },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
+    const response = await callPatch("title-1", { status: "completed" });
+
+    expect(response.status).toBe(200);
+
+    const watchedUpsert = fake.builders.watched_episodes[0].calls.find(
+      (c) => c.method === "upsert",
+    );
+    expect(watchedUpsert?.args[0]).toEqual([
+      { episode_id: "ep-1", title_id: "title-1" },
+      { episode_id: "ep-2", title_id: "title-1" },
+    ]);
+    expect(watchedUpsert?.args[1]).toEqual({
+      onConflict: "user_id,episode_id",
+      ignoreDuplicates: true,
+    });
+  });
+
+  it("unmarks watched episodes when leaving completed", async () => {
+    // The pre-update lookup and the post-update read share the same
+    // tableResults entry (the fake resolves per-table, not per-call), so
+    // configuring user_titles to report "completed" simulates the previous
+    // status and exercises the unmark path (title_id-scoped delete on
+    // watched_episodes) whenever the new status isn't completed.
+    const fakeWasCompleted = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        user_titles: {
+          data: { title_id: "title-1", status: "completed" },
+          error: null,
+        },
+        watched_episodes: { data: null, error: null },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fakeWasCompleted);
+
+    const response = await callPatch("title-1", { status: "dnf" });
+
+    expect(response.status).toBe(200);
+
+    const watchedBuilder = fakeWasCompleted.builders.watched_episodes[0];
+    expect(watchedBuilder.calls[0].method).toBe("delete");
+    const eqCalls = watchedBuilder.calls.filter((c) => c.method === "eq");
+    expect(eqCalls).toEqual([{ method: "eq", args: ["title_id", "title-1"] }]);
   });
 
   it("returns 404 when the title is not in the caller's list", async () => {
