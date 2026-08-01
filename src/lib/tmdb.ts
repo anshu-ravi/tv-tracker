@@ -179,3 +179,10 @@ export async function getTvCredits(id: string): Promise<TitleCredits> {
 
   return { creators, cast };
 }
+
+// IMDb id for a TV show, used to look up OMDb ratings (see lib/ratings.ts).
+// TMDB's external_ids endpoint returns null when a show has no IMDb entry.
+export async function getTvImdbId(id: string): Promise<string | null> {
+  const data = await tmdb<{ imdb_id: string | null }>(`/tv/${id}/external_ids`);
+  return data.imdb_id || null;
+}
