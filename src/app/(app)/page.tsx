@@ -69,6 +69,13 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((utcMidnight(toIso) - utcMidnight(fromIso)) / 86_400_000);
 }
 
+// Currently Watching is split into two sub-sections: a show whose next
+// unwatched episode aired recently is "up next" (business as usual); one
+// whose next unwatched episode aired a while ago has been neglected and
+// moves into the "catch up" carousel instead, so a month-old backlog doesn't
+// visually blend in with shows the user is actively keeping pace with.
+const CATCHUP_THRESHOLD_DAYS = 30;
+
 export default async function HomePage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -165,7 +172,8 @@ export default async function HomePage() {
   );
   const fillerByTitleId = new Map<string, Map<number, EpisodeFiller> | null>(fillerEntries);
 
-  const cards: WatchingCardData[] = watchingTitles.map((ut) => {
+  const cards = watchingTitles
+    .map((ut): WatchingCardData | null => {
     const title = ut.titles;
     const titleEpisodes = episodes.filter((e) => e.title_id === ut.title_id);
     const watchedCount = titleEpisodes.filter((e) => watchedIds.has(e.id)).length;
@@ -177,27 +185,40 @@ export default async function HomePage() {
       (e) => !watchedIds.has(e.id) && (!e.air_date || e.air_date <= today),
     );
 
+    // Nothing aired-but-unwatched left: the show is fully caught up on what
+    // exists so far. It has no place in Currently Watching — if a future
+    // episode is scheduled it'll surface on the Upcoming tab instead, which
+    // is computed separately above. Signal that with a null return, filtered
+    // out below.
+    if (!nextEpisode) return null;
+
     const fillerMap = fillerByTitleId.get(ut.title_id) ?? null;
     const nextEpisodeFillerType =
       title.media_type === "anime" && nextEpisode
         ? fillerMap?.get(nextEpisode.absolute_number ?? nextEpisode.episode_number)?.type
         : undefined;
 
-    const nextEpisodeCode = nextEpisode
-      ? title.media_type === "anime"
+    const nextEpisodeCode =
+      title.media_type === "anime"
         ? `E${nextEpisode.absolute_number ?? nextEpisode.episode_number}`
-        : `S${nextEpisode.season_number}E${nextEpisode.episode_number}`
-      : null;
+        : `S${nextEpisode.season_number}E${nextEpisode.episode_number}`;
 
-    const nextEpisodeName = nextEpisode
-      ? title.media_type === "anime"
+    const nextEpisodeName =
+      title.media_type === "anime"
         ? (fillerMap?.get(nextEpisode.absolute_number ?? nextEpisode.episode_number)?.name ??
           nextEpisode.name ??
           null)
-        : nextEpisode.name
-      : null;
+        : nextEpisode.name;
 
-    const nextEpisodeOverview = nextEpisode?.overview ?? null;
+    const nextEpisodeOverview = nextEpisode.overview ?? null;
+
+    // Days since the next-unwatched episode aired (0 or negative for an
+    // episode with no air_date, since that's treated as available now).
+    // Past the threshold, this show has been neglected long enough to move
+    // out of "Up Next" and into the "Catch Up" carousel.
+    const daysSinceAired = nextEpisode.air_date ? daysBetween(nextEpisode.air_date, today) : 0;
+    const bucket: WatchingCardData["bucket"] =
+      daysSinceAired > CATCHUP_THRESHOLD_DAYS ? "catchup" : "upnext";
 
     return {
       titleId: ut.title_id,
@@ -205,13 +226,16 @@ export default async function HomePage() {
       posterUrl: title.poster_url,
       watchedCount,
       totalCount: titleEpisodes.length,
-      nextUnwatchedEpisodeId: nextEpisode?.id ?? null,
+      nextUnwatchedEpisodeId: nextEpisode.id,
       nextEpisodeCode,
       nextEpisodeName,
       nextEpisodeFillerType,
       nextEpisodeOverview,
+      nextEpisodeAirDate: nextEpisode.air_date,
+      bucket,
     };
-  });
+    })
+    .filter((card): card is WatchingCardData => card !== null);
 
   return <HomeTabs watching={cards} upcoming={upcoming} />;
 }

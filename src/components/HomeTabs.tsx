@@ -3,6 +3,7 @@
 import { useState } from "react";
 import WatchingCard, { type WatchingCardData } from "@/components/WatchingCard";
 import UpcomingCard from "@/components/UpcomingCard";
+import CatchUpCarousel from "@/components/CatchUpCarousel";
 import type { MediaType } from "@/lib/types";
 
 // One title with a known future air date — either the next episode of a
@@ -37,6 +38,11 @@ export default function HomeTabs({
 }) {
   const [tab, setTab] = useState<Tab>("watching");
 
+  // Split Currently Watching into its two sub-sections, computed server-side
+  // per-card (see the Home page's `bucket` classification).
+  const upNext = watching.filter((card) => card.bucket === "upnext");
+  const catchUp = watching.filter((card) => card.bucket === "catchup");
+
   return (
     <div className="px-4 py-6">
       <h1 className="display mb-4 text-3xl">Home</h1>
@@ -61,20 +67,33 @@ export default function HomeTabs({
       {tab === "watching" ? (
         watching.length === 0 ? (
           <p className="card-bold px-4 py-8 text-center text-sm text-ink-soft">
-            Nothing in progress. Add a show from Search to get started.
+            Nothing in progress. Add a show from Search to get started. Shows you&rsquo;re fully
+            caught up on move to the Upcoming tab once their next episode is scheduled.
           </p>
         ) : (
-          <div className="flex flex-col gap-5">
-            {watching.map((card) => (
-              // Keyed on the mutable fields, not just titleId: when a mark
-              // triggers router.refresh() and fresh props arrive, the key
-              // changes and React remounts the card instead of carrying over
-              // stale optimistic local state (see WatchingCard).
-              <WatchingCard
-                key={`${card.titleId}:${card.watchedCount}:${card.nextUnwatchedEpisodeId ?? "none"}`}
-                data={card}
-              />
-            ))}
+          <div className="flex flex-col gap-6">
+            {upNext.length > 0 && (
+              <div className="flex flex-col gap-5">
+                <h2 className="stamp w-fit text-xs">Up Next</h2>
+                {upNext.map((card) => (
+                  // Keyed on the mutable fields, not just titleId: when a mark
+                  // triggers router.refresh() and fresh props arrive, the key
+                  // changes and React remounts the card instead of carrying over
+                  // stale optimistic local state (see WatchingCard).
+                  <WatchingCard
+                    key={`${card.titleId}:${card.watchedCount}:${card.nextUnwatchedEpisodeId ?? "none"}`}
+                    data={card}
+                  />
+                ))}
+              </div>
+            )}
+
+            {catchUp.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <h2 className="stamp w-fit text-xs">Catch Up</h2>
+                <CatchUpCarousel items={catchUp} />
+              </div>
+            )}
           </div>
         )
       ) : upcoming.length === 0 ? (

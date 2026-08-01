@@ -31,6 +31,16 @@ export interface WatchingCardData {
   // expandable panel on the card. Null when there's no next episode, or the
   // episode has no stored overview (common for anime).
   nextEpisodeOverview: string | null;
+  // Air date (ISO) of the next-unwatched episode, or null if it has none.
+  // Used server-side to classify the card into a sub-section, and here by
+  // the Catch Up carousel to render "N weeks/months behind".
+  nextEpisodeAirDate: string | null;
+  // Which Currently Watching sub-section this card belongs in. The Home page
+  // only ever builds cards for titles that still have a next-unwatched
+  // episode (fully caught-up titles are dropped before reaching this
+  // component), so this is always "upnext" or "catchup", never a
+  // caught-up state.
+  bucket: "upnext" | "catchup";
 }
 
 // Round check-circle mark button, matching the Bold prototype: 52px circle,
