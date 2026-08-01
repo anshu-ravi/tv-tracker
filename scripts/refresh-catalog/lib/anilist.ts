@@ -120,6 +120,8 @@ export async function getAnimeTitle(
   title: NormalizedTitle;
   episodes: NormalizedEpisode[];
   malId: number | null;
+  titleEnglish: string | null;
+  titleRomaji: string | null;
 }> {
   const data = await anilistFetch<{ Media: AniDetailMedia }>(DETAIL_QUERY, {
     id: Number(anilistId),
@@ -167,5 +169,11 @@ export async function getAnimeTitle(
     });
   }
 
-  return { title, episodes, malId: m.idMal ?? null };
+  return {
+    title,
+    episodes,
+    malId: m.idMal ?? null,
+    titleEnglish: m.title.english,
+    titleRomaji: m.title.romaji,
+  };
 }

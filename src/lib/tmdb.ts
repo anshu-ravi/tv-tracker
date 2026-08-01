@@ -195,3 +195,151 @@ export async function getTvImdbId(id: string): Promise<string | null> {
   const data = await tmdb<{ imdb_id: string | null }>(`/tv/${id}/external_ids`);
   return data.imdb_id || null;
 }
+
+// ---- anime enrichment (lib/tmdbAnimeMatch.ts) --------------------------------
+// TMDB has no concept of "anime" — these hit the same /search/tv and /tv/{id}
+// endpoints above, but return raw/lightweight shapes tmdbAnimeMatch.ts needs
+// for fuzzy-matching an AniList title before committing to a full episode
+// fetch. Kept in this file (rather than a new client) per the existing
+// convention: one TMDB HTTP client, extended as new endpoints are needed.
+
+export interface TmdbMatchCandidate {
+  id: number;
+  name: string;
+  firstAirDate: string | null;
+}
+
+// Raw /search/tv results for anime title matching — unlike searchTv() above,
+// this keeps the numeric id and full first_air_date (not just a year), which
+// the matcher needs to score candidates.
+export async function searchTvForAnimeMatch(query: string): Promise<TmdbMatchCandidate[]> {
+  if (!query.trim()) return [];
+  const data = await tmdb<{ results: TmdbSearchTvResult[] }>("/search/tv", {
+    query,
+    include_adult: "false",
+  });
+  return data.results.slice(0, 5).map((r) => ({
+    id: r.id,
+    name: r.name,
+    firstAirDate: r.first_air_date || null,
+  }));
+}
+
+export interface TmdbSeasonSummary {
+  seasonNumber: number;
+  episodeCount: number;
+}
+
+export interface TmdbShowSummary {
+  id: number;
+  name: string;
+  totalEpisodes: number | null;
+  seasons: TmdbSeasonSummary[];
+}
+
+// Lightweight /tv/{id} fetch (no per-season episode fetch) — enough to test
+// the "whole" and "season" episode-count strategies before paying for a full
+// episode fetch. Specials (season_number 0) are excluded, matching the "not
+// sufficient evidence alone" episode-count checks in tmdbAnimeMatch.ts.
+export async function getTvShowSummary(id: string): Promise<TmdbShowSummary> {
+  const tv = await tmdb<TmdbTv>(`/tv/${id}`);
+  const seasons = tv.seasons
+    .filter((s) => s.season_number > 0)
+    .map((s) => ({ seasonNumber: s.season_number, episodeCount: s.episode_count }));
+  return {
+    id: tv.id,
+    name: tv.name,
+    totalEpisodes: seasons.reduce((sum, s) => sum + s.episodeCount, 0) || null,
+    seasons,
+  };
+}
+
+export interface TmdbEpisodeDetail {
+  seasonNumber: number;
+  episodeNumber: number;
+  name: string | null;
+  overview: string | null;
+  airDate: string | null;
+  stillUrl: string | null;
+  runtime: number | null;
+}
+
+// One TMDB season's episodes, in air order — used by the "whole" strategy
+// (called once per real season) and the "season" strategy (called once).
+export async function getTvSeasonEpisodesDetail(
+  id: string,
+  seasonNumber: number,
+): Promise<TmdbEpisodeDetail[]> {
+  const sd = await tmdb<{ episodes: TmdbEpisode[] }>(`/tv/${id}/season/${seasonNumber}`);
+  return sd.episodes.map((e) => ({
+    seasonNumber: e.season_number,
+    episodeNumber: e.episode_number,
+    name: e.name,
+    overview: e.overview,
+    airDate: e.air_date || null,
+    stillUrl: img(e.still_path, "w300"),
+    runtime: e.runtime,
+  }));
+}
+
+export interface TmdbEpisodeGroupSummary {
+  id: string;
+  name: string;
+  type: number; // TMDB group types: 2 = "Absolute" order, others (production, story arc, ...) are not usable here
+  episodeCount: number;
+  groupCount: number;
+}
+
+interface TmdbEpisodeGroupsResponse {
+  results: {
+    id: string;
+    name: string;
+    type: number;
+    episode_count: number;
+    group_count: number;
+  }[];
+}
+
+// /tv/{id}/episode_groups lists any custom orderings TMDB (via TheTVDB
+// contributors) has curated for this show — the "group" match strategy only
+// cares about type 2 ("Absolute"), which is filtered by the caller.
+export async function getTvEpisodeGroups(id: string): Promise<TmdbEpisodeGroupSummary[]> {
+  const data = await tmdb<TmdbEpisodeGroupsResponse>(`/tv/${id}/episode_groups`);
+  return data.results.map((g) => ({
+    id: g.id,
+    name: g.name,
+    type: g.type,
+    episodeCount: g.episode_count,
+    groupCount: g.group_count,
+  }));
+}
+
+interface TmdbEpisodeGroupDetailResponse {
+  groups: {
+    order: number;
+    episodes: TmdbEpisode[];
+  }[];
+}
+
+// /tv/episode_group/{id} — the group's episodes, already carrying
+// overview/still/runtime, flattened across its sub-groups (ordered by group
+// order, then TMDB's episode order within each) into absolute 1..N. This is
+// TMDB's own curated absolute ordering, so no extra season fetches needed.
+export async function getEpisodeGroupEpisodes(groupId: string): Promise<TmdbEpisodeDetail[]> {
+  const data = await tmdb<TmdbEpisodeGroupDetailResponse>(`/tv/episode_group/${groupId}`);
+  const out: TmdbEpisodeDetail[] = [];
+  for (const g of data.groups.slice().sort((a, b) => a.order - b.order)) {
+    for (const e of g.episodes) {
+      out.push({
+        seasonNumber: e.season_number,
+        episodeNumber: e.episode_number,
+        name: e.name,
+        overview: e.overview,
+        airDate: e.air_date || null,
+        stillUrl: img(e.still_path, "w300"),
+        runtime: e.runtime,
+      });
+    }
+  }
+  return out;
+}
