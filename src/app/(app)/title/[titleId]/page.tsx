@@ -37,6 +37,7 @@ interface EpisodeRow {
   absolute_number: number | null;
   name: string | null;
   air_date: string | null;
+  overview: string | null;
 }
 
 const STATUS_LABEL: Record<WatchStatus, string> = {
@@ -85,7 +86,7 @@ export default async function TitleDetailPage({
         .maybeSingle(),
       supabase
         .from("episodes")
-        .select("id, season_number, episode_number, absolute_number, name, air_date")
+        .select("id, season_number, episode_number, absolute_number, name, air_date, overview")
         .eq("title_id", titleId)
         .order("season_number", { ascending: true })
         .order("episode_number", { ascending: true }),
@@ -148,6 +149,7 @@ export default async function TitleDetailPage({
           name: e.name || filler?.name || null,
           airLabel: formatDate(e.air_date),
           fillerType: filler?.type,
+          overview: e.overview,
         };
       }),
   }));
