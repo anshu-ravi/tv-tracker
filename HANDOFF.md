@@ -1,96 +1,111 @@
 # Handoff — tv-tracker
 
-Snapshot of where the build stands and exactly where to continue. Pairs with
+Snapshot of where the build stands and where to continue. Pairs with
 `CLAUDE.md` (how to work here) and `context.md` (the why + full scope).
 
-_Written 2026-07-31, end of the foundation session._
+_Updated 2026-08-01._
 
 ## Where we are
 
-Product scope and the **Bold** design language are locked (see `context.md`).
-Supabase project + schema + RLS are live. The **foundation and auth are now
-merged into `main`** (build + lint verified green). What's on `main`:
+The app is a **working, end-to-end mobile PWA**. On `main` (build + lint + tests
+green, and runtime-verified while signed in) you can: log in, search TMDB+AniList,
+add a title to a bucket, browse buckets, open a title's detail screen, and mark
+episodes (per-episode or a whole season) watched. Everything below is merged to
+`main`.
 
-- **Design system** — `src/app/globals.css` (Bold tokens: paper/ink/acid, hard
-  shadows, display type, hairline grid) + `src/app/layout.tsx` (Archivo +
-  Archivo Black fonts, PWA metadata) + `public/manifest.webmanifest`.
-- **Supabase wiring** — `src/lib/supabase/{client,server,middleware}.ts` and
-  `src/proxy.ts` (Next 16's renamed "middleware"; session refresh +
-  redirect-to-`/login` gate).
-- **Auth** — `/login` (Bold sign-in + first-run create-account, server
-  actions), `/auth/confirm` (email-OTP link handler), sign-out action, and an
-  authenticated Home stub (`src/app/page.tsx`) that greets the user + signs out.
-- **Data clients** — `src/lib/types.ts` (normalized shapes), `src/lib/tmdb.ts`
-  (TV search + episodes, bearer auth), `src/lib/anilist.ts` (anime search +
-  airing schedule, GraphQL).
-- **Env** — `.env.local` has Supabase public vars; `.env.example` documents all
-  three vars; `.env` (TMDB key, never read) is present and gitignored.
+> ⚠️ `main` is **NOT pushed** — it's ~44 commits ahead of `origin/main`. The user
+> pushes manually. Local `main` has the full history; push when you want the
+> remote in sync.
 
-### Done since the foundation session (all merged to `main`, build + lint green)
+### What's on `main`
 
-- ✅ **`middleware` → `proxy` rename** (Next 16 convention; deprecation warning gone).
-- ✅ **Auth** — `/login`, `/auth/confirm`, sign-out, Home stub. **Runtime-tested** ✅
-  (Confirm-email turned OFF; sign up / out / in verified against the live project).
-- ✅ **API routes** (`src/app/api/**`): `GET /api/search?q=` (TMDB+AniList merged),
-  `POST /api/titles` (fetch details → upsert `titles`+`episodes` → upsert
-  `user_titles`), `PATCH /api/titles/:id/status`, `POST`/`DELETE
-  /api/episodes/:id/watch`. Shared `requireUser()` guard in `src/lib/api/auth.ts`;
-  all 401 without a session. Response shapes documented in the code.
-- ✅ **PWA icons** — `public/icon-{192,512,512-maskable}.png` + `scripts/generate-icons.py`
-  (Pillow, regenerable); manifest updated with `any` + `maskable` entries.
-- ✅ **Screens** (Bold UI, Framer Motion) — bottom-tab shell (`src/app/(app)/`),
-  Home currently-watching cards with animated **progress bar** + punchy
-  mark-watched (`WatchingCard`, `ProgressBar`) + undo + finale guard, TV/Anime
-  bucketed grids (DNF muted), Watchlist, Search (add-to-bucket). **Runtime-tested**
-  ✅ (adds land correctly, verified in DB).
-- ✅ **Library editing** — each poster tile has a status dropdown + ✕ remove
-  (`TitleActions`); `DELETE /api/titles/:id` removes tracking rows (catalog kept).
-- ✅ **Title detail** — `/title/[titleId]`: backdrop/poster/overview, **creator +
-  cast** fetched live from TMDB/AniList (`getTvCredits`/`getAnimeCredits`, not
-  stored), episodes by season with per-episode ticks (`EpisodeTick`) and
-  mark/unmark-whole-season (`SeasonControls` → `POST`/`DELETE
-  /api/titles/:id/season/:n/watch`). Poster tiles + Home cards link here.
-- ✅ **Search prefers AniList** — dedupes the TMDB/TV duplicate when a title
-  exists on both; anime results shown first.
-- ✅ **Mobile-first framing** — app clamped to a centered `max-w-md` phone-width
-  column with `border-x`; grids fixed at 3 columns (so desktop == phone).
-- ✅ **Test harness** — Vitest; **50 tests** (`npm test`) over provider
-  normalization + all API-route handlers. `npm run lint` clean (only expected
-  `<img>` LCP warnings).
-- 🟡 **Nightly air-date cron — AUTHORED, NOT DEPLOYED.** Files exist under
-  `supabase/`: `functions/refresh-air-dates/index.ts` (Deno), a pg_cron
-  scheduling migration, and a README with a deploy checklist. **Nothing is live
-  yet** — deploying needs owner approval + secrets (see below).
-  Note: `supabase/functions/**` is excluded from the app's tsc/eslint (Deno runtime).
+- **Foundation** — Bold design system (`src/app/globals.css`), root layout + fonts
+  + PWA manifest + icons (`public/icon-*.png`, `scripts/generate-icons.py`).
+  Supabase wiring (`src/lib/supabase/*`) + `src/proxy.ts` (Next 16 "proxy"
+  convention; session refresh + redirect-to-`/login` gate).
+- **Auth** — email+password, single user. `/login` (sign-in + first-run
+  create-account server actions), `/auth/confirm` (OTP link), sign-out. Confirm-email
+  is turned OFF in Supabase. **Runtime-tested.**
+- **Data clients** (`src/lib/`) — `tmdb.ts` (TV search/details/episodes + credits),
+  `anilist.ts` (anime search/airing + credits), `animefillerlist.ts` (anime episode
+  names + canon/filler/mixed, scraped + cached, server-only), `types.ts`.
+- **API routes** (`src/app/api/**`) — `GET /api/search?q=` (merges TMDB+AniList,
+  **prefers AniList / dedupes the TMDB-TV duplicate**), `POST /api/titles` (add:
+  fetch details → upsert `titles`+`episodes` → upsert `user_titles`),
+  `DELETE /api/titles/:id` (remove from library), `PATCH /api/titles/:id/status`,
+  `POST`/`DELETE /api/episodes/:id/watch`, `POST`/`DELETE
+  /api/titles/:id/season/:n/watch` (bulk season). Shared `requireUser()` guard
+  (`src/lib/api/auth.ts`); all 401 without a session.
+- **Screens** (`src/app/(app)/`, bottom-tab shell) —
+  - **Home**: currently-watching cards. Mark-watched matches the design prototype
+    (round acid check-circle, punch + "+1 EP" fly-up, thin ink progress bar, 2.5s
+    undo toast, finale guard). Cards link to the detail screen.
+  - **TV / Anime**: poster grids split into the 4 buckets, DNF muted. **Watchlist**.
+    **Search**: results grid, add-to-bucket. Every poster tile has an inline
+    **status dropdown + ✕ remove** (`TitleActions`) and links to the detail screen.
+  - **Detail** (`/title/[titleId]`): backdrop/poster/overview, **creator + cast**
+    (live from TMDB/AniList), **Back** button, and an episode list with a **season
+    dropdown**, per-episode ticks, **mark/unmark whole season** (ticks update
+    instantly), a **scroll box** for long seasons, and — for anime — **episode
+    names + CANON/FILLER/MIXED tags** from animefillerlist.
+- **Mobile framing** — whole app clamped to a centered `max-w-md` phone-width column
+  with full-height `border-x` (looks the same on desktop as on a phone); grids fixed
+  at 3 columns.
+- **Tests** — Vitest, **53 tests** (`npm test`): provider normalization, all API-route
+  handlers, and the animefillerlist parser.
 
-### NOT yet done — this is the resume list
+### 🟡 Authored but NOT deployed — nightly air-date cron
+Files under `supabase/`: `functions/refresh-air-dates/index.ts` (Deno), a pg_cron
+migration, and a README deploy checklist. Nothing is live. `supabase/functions/**`
+is excluded from the app's tsc/eslint (Deno runtime).
 
-1. **Deploy the cron** (see checklist in
-   `supabase/functions/refresh-air-dates/README.md`): set `TMDB_API_KEY` secret,
-   `supabase functions deploy refresh-air-dates`, smoke-test with a manual POST,
-   fill the migration placeholders (`ermhfiofisjsrniccqlv` + service-role key, or
-   the Vault variant), enable `pg_cron`/`pg_net`, apply the migration, run the
-   Supabase advisors. Also verify the Edge Function's inferred column names match
-   the live schema before scheduling.
+## Resume list (open items)
 
-## How to run
+1. **Deploy the cron** — follow `supabase/functions/refresh-air-dates/README.md`:
+   set the `TMDB_API_KEY` secret, `supabase functions deploy`, smoke-test a manual
+   POST, fill the migration placeholders (`ermhfiofisjsrniccqlv` + service-role key,
+   or the Vault variant), enable `pg_cron`/`pg_net`, apply the migration, run the
+   Supabase advisors, and verify the Edge Function's inferred column names against
+   the live schema first. Needs owner approval (live side-effects).
+2. **Data cleanup** — **Bleach** and **Code Geass** are stored as **TV**
+   (`source=tmdb`) from early adds, so they get no anime filler tags. Remove them
+   (✕ on the tile) and re-add via Search (now prefers AniList) to reclassify as
+   anime. Note: **Naruto** was added (Watchlist) as an anime demo.
+3. **Polish backlog (optional)** — the app uses plain `<img>` (6 eslint LCP
+   *warnings*, no errors); could move to `next/image` with configured domains.
+   Movies are still deferred (schema reserves room).
+
+## How to run / verify
 
 ```bash
-npm run dev
+npm run dev      # http://localhost:3000
+npm run build    # prod build
+npm run lint     # eslint (only expected <img> warnings)
+npm test         # vitest (53 tests)
 ```
 
-Needs `.env.local` (present) and `TMDB_API_KEY` in `.env` (present). AniList needs
-no key. Supabase project ref: `ermhfiofisjsrniccqlv`.
+Needs `.env.local` (present) + `TMDB_API_KEY` in `.env` (present, never read).
+AniList + animefillerlist need no key. Supabase project ref: `ermhfiofisjsrniccqlv`.
+
+- **Test account:** `admin2@admin.com` exists (there are 2 auth users — one is
+  likely a stray from a first sign-up attempt; harmless).
+- **Seeing authed screens:** the app gates everything behind login. Claude can't
+  type a password, so to view the live UI, the user signs in (in the Browser pane
+  or their own Chrome) and Claude drives from there; Claude verifies data
+  independently via the Supabase tools (admin, no login).
+- **Design source of truth:** the "Bold" interactive prototype lives at
+  `…/be52a594-…/scratchpad/proto-bold.html` (an ephemeral scratchpad from an
+  earlier session). Consider copying it into the repo (e.g. `design/`) before it's
+  cleaned up.
 
 ## Key facts to not re-derive
 
 - **Stack:** Next.js 16 + React 19 + TS + Tailwind v4 + Framer Motion; Supabase
-  (Postgres 17); Vercel target. Backend = Supabase + thin Next.js route handlers;
-  **no separate server**. Future data/ML can be done in Python against the same
-  Postgres (see CLAUDE.md → Backend & future Python).
-- **Auth:** email + password, single user.
+  (Postgres 17); Vercel target. Backend = Supabase + thin Next.js route handlers,
+  **no separate server**. Future data/ML can run in Python against the same Postgres.
 - **Data model:** `titles`/`episodes` (shared catalog) + `user_titles`/
   `watched_episodes` (per-user, RLS). Full detail in CLAUDE.md.
-- **Git:** remote `github.com/anshu-ravi/tv-tracker`; work on `feat/*` branches;
-  follow the `git-workflow` skill; **never add Claude attribution** to commits or
-  PRs (user requirement).
+- **Working agreements (see CLAUDE.md):** every feature ships on a `feat/*` branch
+  merged to `main`; **all implementation is done by Sonnet 5 subagents** (Claude
+  plans/reviews/runs the build/drives git); **never add Claude attribution** to
+  commits or PRs.
