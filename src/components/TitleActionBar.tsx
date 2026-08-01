@@ -96,12 +96,23 @@ export default function TitleActionBar({
   mediaType,
   titleId,
   initialStatus,
+  initialFavorited,
+  variant = "default",
 }: {
   source: DataSource;
   sourceId: string;
   mediaType: MediaType;
   titleId?: string;
   initialStatus?: WatchStatus;
+  // Seeds the heart's initial state so grid cards (many per page) don't each
+  // fire the `/api/lists?titleId=` on-mount fetch just to learn favorite
+  // status — the caller already knows it from one batched query. Leave
+  // undefined (detail/preview pages) to keep the original fallback fetch.
+  initialFavorited?: boolean;
+  // "compact" is the small icon-row used on narrow poster-grid cards
+  // (TV/Anime/Watchlist); "default" is the larger bar on the title detail
+  // and preview pages. Behavior is identical — only sizing changes.
+  variant?: "default" | "compact";
 }) {
   const router = useRouter();
 
@@ -118,7 +129,7 @@ export default function TitleActionBar({
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
 
-  const [favorited, setFavorited] = useState(false);
+  const [favorited, setFavorited] = useState(initialFavorited ?? false);
   const [favPending, setFavPending] = useState(false);
 
   const triple = { source, sourceId, mediaType };
@@ -145,7 +156,12 @@ export default function TitleActionBar({
   // fires once resolvedTitleId is known, then again (as a no-op) once lists
   // is no longer null, and never after. Preview pages (no titleId) skip this
   // entirely — an empty heart is correct there since nothing's tracked yet.
+  // Callers that already know favorite status (grid cards, via
+  // `initialFavorited`) skip this fetch altogether — with many cards per
+  // page it would otherwise fire once per card just to learn a boolean the
+  // server already had in hand.
   useEffect(() => {
+    if (initialFavorited !== undefined) return;
     if (!resolvedTitleId || lists !== null) return;
     // Deferred (not called synchronously in the effect body) so the
     // setState calls inside loadLists happen in a follow-up task rather
@@ -156,7 +172,7 @@ export default function TitleActionBar({
     // stable-enough-in-practice function it calls).
     const timer = setTimeout(() => void loadLists(resolvedTitleId), 0);
     return () => clearTimeout(timer);
-  }, [resolvedTitleId, lists]);
+  }, [resolvedTitleId, lists, initialFavorited]);
 
   function openStatusMenu() {
     setListOpen(false);
@@ -345,14 +361,23 @@ export default function TitleActionBar({
     }
   }
 
+  const compact = variant === "compact";
   const iconButtonClass = (active: boolean) =>
-    `hard-shadow-sm flex h-11 w-11 shrink-0 items-center justify-center border-[3px] border-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 ${
-      active ? "bg-acid" : "bg-paper"
-    }`;
+    `hard-shadow-sm flex shrink-0 items-center justify-center border-[3px] border-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 ${
+      compact ? "h-8 w-8" : "h-11 w-11"
+    } ${active ? "bg-acid" : "bg-paper"}`;
+  const iconSizeClass = compact ? "h-4 w-4" : "h-5 w-5";
+  const gapClass = compact ? "gap-1.5" : "gap-2";
+  // Compact cards live inside narrow 3-col grid cells, so a popover that
+  // opened flush-left could get clipped by a neighbouring cell edge more
+  // easily than the wide detail-page bar. A higher z-index (menus already
+  // escape `overflow-hidden` per PosterCard's layout — see 1c) keeps it
+  // above sibling cards; it's still fine for it to visually overhang them.
+  const popoverZClass = compact ? "z-40" : "z-30";
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
+      <div className={`flex items-center ${gapClass}`}>
         {/* Status */}
         <div className="relative">
           <button
@@ -362,7 +387,7 @@ export default function TitleActionBar({
             aria-label={status ? `Status: ${status}` : "Add to library"}
             className={iconButtonClass(!!status)}
           >
-            <TagIcon className="h-5 w-5" />
+            <TagIcon className={iconSizeClass} />
           </button>
           {statusOpen && (
             <>
@@ -373,7 +398,7 @@ export default function TitleActionBar({
                 onClick={() => setStatusOpen(false)}
                 className="fixed inset-0 z-20 cursor-default"
               />
-              <div className="card-bold absolute left-0 top-full z-30 mt-2 w-40 divide-y-[3px] divide-ink p-0">
+              <div className={`card-bold absolute left-0 top-full ${popoverZClass} mt-2 w-40 divide-y-[3px] divide-ink p-0`}>
                 {STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
@@ -408,7 +433,7 @@ export default function TitleActionBar({
             aria-label="Add to list"
             className={iconButtonClass(listOpen)}
           >
-            <BookmarkPlusIcon className="h-5 w-5" />
+            <BookmarkPlusIcon className={iconSizeClass} />
           </button>
           {listOpen && (
             <>
@@ -419,7 +444,7 @@ export default function TitleActionBar({
                 onClick={() => setListOpen(false)}
                 className="fixed inset-0 z-20 cursor-default"
               />
-              <div className="card-bold absolute left-0 top-full z-30 mt-2 w-56 p-0">
+              <div className={`card-bold absolute left-0 top-full ${popoverZClass} mt-2 w-56 p-0`}>
                 {listsLoading || lists === null ? (
                   <p className="px-3 py-3 text-[11px] text-ink-soft">Loading…</p>
                 ) : lists.length === 0 ? (
@@ -486,7 +511,7 @@ export default function TitleActionBar({
           aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
           className={iconButtonClass(favorited)}
         >
-          <HeartIcon filled={favorited} className="h-5 w-5" />
+          <HeartIcon filled={favorited} className={iconSizeClass} />
         </button>
       </div>
 
