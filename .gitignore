@@ -55,3 +55,6 @@ next-env.d.ts
 local/
 # claude code local settings
 .claude/settings.local.json
+
+# git worktrees created by background agents
+.claude/worktrees/
