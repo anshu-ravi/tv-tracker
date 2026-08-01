@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SearchResultCard from "@/components/SearchResultCard";
 import type { SearchResult } from "@/lib/types";
 import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
+
+const DEBOUNCE_MS = 350;
+const MIN_QUERY_LENGTH = 2;
 
 // Query input + results grid. `existing` maps "source:sourceId" -> the
 // caller's current bucket + catalog title id for that title, computed
@@ -22,55 +25,76 @@ export default function SearchClient({
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
-  async function runSearch(event?: FormEvent) {
-    event?.preventDefault();
-    const q = query.trim();
-    if (!q) return;
+  const trimmedQuery = query.trim();
+  // Below the minimum length, there's nothing to fetch — rendering derives
+  // straight from this instead of resetting results/searched/error state
+  // synchronously inside the effect (which is really just derived state, not
+  // a side effect, and trips react-hooks/set-state-in-effect).
+  const queryTooShort = trimmedQuery.length < MIN_QUERY_LENGTH;
 
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-      if (!res.ok) throw new Error("Search failed");
-      const json = (await res.json()) as { results: SearchResult[] };
-      setResults(json.results);
-      setSearched(true);
-    } catch {
-      setError("Search failed. Try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    if (queryTooShort) return;
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(() => {
+      setLoading(true);
+      setError(null);
+
+      (async () => {
+        try {
+          const res = await fetch(
+            `/api/search?q=${encodeURIComponent(trimmedQuery)}`,
+            { signal: controller.signal },
+          );
+          if (!res.ok) throw new Error("Search failed");
+          const json = (await res.json()) as { results: SearchResult[] };
+          setResults(json.results);
+          setSearched(true);
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setError("Search failed. Try again.");
+        } finally {
+          if (!controller.signal.aborted) setLoading(false);
+        }
+      })();
+    }, DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [trimmedQuery, queryTooShort]);
 
   return (
     <div>
-      <form onSubmit={runSearch} className="mb-5 flex gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search TV shows or anime…"
-          className="hard-shadow-sm flex-1 border-[3px] border-ink bg-paper px-3 py-2 text-sm outline-none placeholder:text-ink-soft"
-        />
-        <button
-          type="submit"
-          disabled={loading || !query.trim()}
-          className="hard-shadow-sm border-[3px] border-ink bg-acid px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
-        >
-          {loading ? "…" : "Go"}
-        </button>
-      </form>
+      <div className="mb-5 flex gap-2">
+        <div className="hard-shadow-sm relative flex-1 border-[3px] border-ink bg-paper">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search TV shows or anime…"
+            className="w-full bg-transparent px-3 py-2 text-sm outline-none placeholder:text-ink-soft"
+          />
+          {loading && !queryTooShort && (
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-soft">
+              …
+            </span>
+          )}
+        </div>
+      </div>
 
-      {error && (
+      {!queryTooShort && error && (
         <p className="card-bold mb-4 px-4 py-3 text-sm text-ink-soft">{error}</p>
       )}
 
-      {searched && !loading && !error && results.length === 0 && (
+      {!queryTooShort && searched && !loading && !error && results.length === 0 && (
         <p className="card-bold px-4 py-8 text-center text-sm text-ink-soft">
           No results for &ldquo;{query}&rdquo;.
         </p>
       )}
 
-      {results.length > 0 && (
+      {!queryTooShort && results.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {results.map((result) => (
             <SearchResultCard
