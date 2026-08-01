@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { DataSource, ListSummary, MediaType, WatchStatus } from "@/lib/types";
+import { useState } from "react";
+import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
+import { useTitleActions } from "@/lib/useTitleActions";
+import { TagIcon, BookmarkPlusIcon, HeartIcon, CheckIcon } from "@/components/icons";
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
@@ -11,85 +12,16 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "dnf", label: "DNF" },
 ];
 
-const JSON_HEADERS = { "content-type": "application/json" } as const;
-
-// --- Icons -------------------------------------------------------------
-// Inline SVG only (no icon libraries — a strict CSP blocks external
-// anything). Thick strokes, no fill unless "active", so they read as
-// neo-brutalist rather than default web-app icons.
-
-function TagIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M20.5 12.5 12.5 20.5a2 2 0 0 1-2.83 0L3.5 14.33a2 2 0 0 1 0-2.83L11.5 3.5H19a1.5 1.5 0 0 1 1.5 1.5z" />
-      <circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function BookmarkPlusIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4.5L5 21V4.5a1 1 0 0 1 1-1z" />
-      <path d="M9.5 8.5h5M12 6v5" />
-    </svg>
-  );
-}
-
-function HeartIcon({ className, filled }: { className?: string; filled?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill={filled ? "currentColor" : "none"}
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M12 20.5s-7.5-4.6-10-9.2C.4 8 1.7 4 5.3 3.2c2.4-.5 4.6.6 6.7 3 2.1-2.4 4.3-3.5 6.7-3 3.6.8 4.9 4.8 3.3 8.1-2.5 4.6-10 9.2-10 9.2z" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={3}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M4 12.5 9.5 18 20 5" />
-    </svg>
-  );
-}
-
 // --- Component -----------------------------------------------------------
 // Shared status / add-to-list / favorite controls for both the tracked title
 // detail page and the live (not-yet-added) preview page. When `titleId` is
 // absent (preview), every mutation resolves the catalog row lazily via the
 // provider triple and the component adopts the id the first response hands
 // back, so status/list/favorite actions compose in any order.
+//
+// Poster-grid cards no longer use this component — they get a compact "⋯"
+// trigger + bottom action sheet instead (see CardActionSheet), which shares
+// the same underlying useTitleActions hook.
 export default function TitleActionBar({
   source,
   sourceId,
@@ -97,7 +29,6 @@ export default function TitleActionBar({
   titleId,
   initialStatus,
   initialFavorited,
-  variant = "default",
 }: {
   source: DataSource;
   sourceId: string;
@@ -109,70 +40,29 @@ export default function TitleActionBar({
   // status — the caller already knows it from one batched query. Leave
   // undefined (detail/preview pages) to keep the original fallback fetch.
   initialFavorited?: boolean;
-  // "compact" is the small icon-row used on narrow poster-grid cards
-  // (TV/Anime/Watchlist); "default" is the larger bar on the title detail
-  // and preview pages. Behavior is identical — only sizing changes.
-  variant?: "default" | "compact";
 }) {
-  const router = useRouter();
+  const {
+    resolvedTitleId,
+    status,
+    statusPending,
+    statusError,
+    lists,
+    listsLoading,
+    listActionError,
+    favorited,
+    favPending,
+    loadLists,
+    handleSelectStatus,
+    handleRemove,
+    toggleList,
+    handleCreateList,
+    toggleFavorite,
+  } = useTitleActions({ source, sourceId, mediaType, titleId, initialStatus, initialFavorited });
 
-  const [resolvedTitleId, setResolvedTitleId] = useState<string | undefined>(titleId);
-  const [status, setStatus] = useState<WatchStatus | undefined>(initialStatus);
-  const [statusPending, setStatusPending] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
-  const [statusError, setStatusError] = useState(false);
-
   const [listOpen, setListOpen] = useState(false);
-  const [lists, setLists] = useState<ListSummary[] | null>(null);
-  const [listsLoading, setListsLoading] = useState(false);
-  const [listActionError, setListActionError] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
-
-  const [favorited, setFavorited] = useState(initialFavorited ?? false);
-  const [favPending, setFavPending] = useState(false);
-
-  const triple = { source, sourceId, mediaType };
-
-  async function loadLists(tid: string | undefined) {
-    setListsLoading(true);
-    try {
-      const res = await fetch(`/api/lists${tid ? `?titleId=${tid}` : ""}`);
-      if (!res.ok) throw new Error("Failed to load lists");
-      const body = (await res.json()) as { lists: ListSummary[] };
-      setLists(body.lists);
-      setFavorited(body.lists.find((l) => l.isFavorites)?.contains ?? false);
-    } catch {
-      setListActionError("Failed to load lists.");
-    } finally {
-      setListsLoading(false);
-    }
-  }
-
-  // On the detail page (titleId present from the start), the heart needs its
-  // real favorited state on mount — otherwise it renders empty until the
-  // user happens to open the add-to-list menu, which is what actually
-  // fetches it. `lists` doubles as the "have we fetched yet" guard: this
-  // fires once resolvedTitleId is known, then again (as a no-op) once lists
-  // is no longer null, and never after. Preview pages (no titleId) skip this
-  // entirely — an empty heart is correct there since nothing's tracked yet.
-  // Callers that already know favorite status (grid cards, via
-  // `initialFavorited`) skip this fetch altogether — with many cards per
-  // page it would otherwise fire once per card just to learn a boolean the
-  // server already had in hand.
-  useEffect(() => {
-    if (initialFavorited !== undefined) return;
-    if (!resolvedTitleId || lists !== null) return;
-    // Deferred (not called synchronously in the effect body) so the
-    // setState calls inside loadLists happen in a follow-up task rather
-    // than cascading straight out of this render.
-    // loadLists is intentionally omitted from deps — it's redefined every
-    // render, and including it would refire this on every render instead of
-    // once (it's not a dependency the effect needs to react to, only a
-    // stable-enough-in-practice function it calls).
-    const timer = setTimeout(() => void loadLists(resolvedTitleId), 0);
-    return () => clearTimeout(timer);
-  }, [resolvedTitleId, lists, initialFavorited]);
 
   function openStatusMenu() {
     setListOpen(false);
@@ -183,207 +73,41 @@ export default function TitleActionBar({
     setStatusOpen(false);
     setListOpen((open) => {
       const next = !open;
-      if (next) {
-        setListActionError(null);
-        void loadLists(resolvedTitleId);
-      }
+      if (next) void loadLists(resolvedTitleId);
       return next;
     });
   }
 
-  async function handleSelectStatus(next: WatchStatus) {
+  async function onSelectStatus(next: WatchStatus) {
     setStatusOpen(false);
-    setStatusPending(true);
-    setStatusError(false);
-    try {
-      if (resolvedTitleId) {
-        const res = await fetch(`/api/titles/${resolvedTitleId}/status`, {
-          method: "PATCH",
-          headers: JSON_HEADERS,
-          body: JSON.stringify({ status: next }),
-        });
-        if (!res.ok) throw new Error("Failed to update status");
-        setStatus(next);
-        router.refresh();
-      } else {
-        const res = await fetch("/api/titles", {
-          method: "POST",
-          headers: JSON_HEADERS,
-          body: JSON.stringify({ ...triple, status: next }),
-        });
-        if (!res.ok) throw new Error("Failed to add title");
-        const body = (await res.json()) as { titleId: string };
-        // Land on the real tracked page rather than lingering on the
-        // now-stale live preview.
-        router.push(`/title/${body.titleId}`);
-      }
-    } catch {
-      setStatusError(true);
-    } finally {
-      setStatusPending(false);
-    }
+    await handleSelectStatus(next);
   }
 
-  async function handleRemove() {
-    if (!resolvedTitleId) return;
-    if (!window.confirm("Remove this title from your library?")) return;
+  async function onRemove() {
     setStatusOpen(false);
-    setStatusPending(true);
-    setStatusError(false);
-    try {
-      const res = await fetch(`/api/titles/${resolvedTitleId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to remove title");
-      router.push("/");
-    } catch {
-      setStatusError(true);
-      setStatusPending(false);
-    }
+    await handleRemove();
   }
 
-  async function toggleList(list: ListSummary) {
-    const willAdd = !list.contains;
-    setLists((prev) =>
-      prev?.map((l) =>
-        l.id === list.id
-          ? { ...l, contains: willAdd, titleCount: l.titleCount + (willAdd ? 1 : -1) }
-          : l,
-      ) ?? prev,
-    );
-    setListActionError(null);
-
-    try {
-      if (willAdd) {
-        const res = await fetch(`/api/lists/${list.id}/titles`, {
-          method: "POST",
-          headers: JSON_HEADERS,
-          body: JSON.stringify(resolvedTitleId ? { titleId: resolvedTitleId } : triple),
-        });
-        if (!res.ok) throw new Error("Failed to add to list");
-        const body = (await res.json()) as { titleId: string };
-        if (!resolvedTitleId) setResolvedTitleId(body.titleId);
-        if (list.isFavorites) setFavorited(true);
-      } else {
-        // A list can only already `contain` a title once it has a resolved
-        // catalog id, so this branch always has one.
-        if (!resolvedTitleId) return;
-        const res = await fetch(`/api/lists/${list.id}/titles/${resolvedTitleId}`, {
-          method: "DELETE",
-        });
-        if (!res.ok) throw new Error("Failed to remove from list");
-        if (list.isFavorites) setFavorited(false);
-      }
-      router.refresh();
-    } catch {
-      // Revert the optimistic flip.
-      setLists((prev) =>
-        prev?.map((l) =>
-          l.id === list.id
-            ? { ...l, contains: !willAdd, titleCount: l.titleCount + (willAdd ? -1 : 1) }
-            : l,
-        ) ?? prev,
-      );
-      setListActionError("That didn't save — try again.");
-    }
-  }
-
-  async function handleCreateList(e: React.FormEvent) {
+  async function onCreateList(e: React.FormEvent) {
     e.preventDefault();
-    const name = newListName.trim();
-    if (!name) return;
-
+    if (!newListName.trim()) return;
     setCreatingList(true);
-    setListActionError(null);
     try {
-      const res = await fetch("/api/lists", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ name }),
-      });
-      if (res.status === 409) {
-        setListActionError("A list with that name already exists.");
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to create list");
-      const { list } = (await res.json()) as { list: ListSummary };
-
-      const addRes = await fetch(`/api/lists/${list.id}/titles`, {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify(resolvedTitleId ? { titleId: resolvedTitleId } : triple),
-      });
-      if (addRes.ok) {
-        const addBody = (await addRes.json()) as { titleId: string };
-        if (!resolvedTitleId) setResolvedTitleId(addBody.titleId);
-      }
-
-      setLists((prev) => [...(prev ?? []), { ...list, contains: true, titleCount: 1 }]);
+      await handleCreateList(newListName);
       setNewListName("");
-      router.refresh();
-    } catch {
-      setListActionError("Failed to create list.");
     } finally {
       setCreatingList(false);
     }
   }
 
-  async function toggleFavorite() {
-    const next = !favorited;
-    setFavorited(next);
-    setFavPending(true);
-    try {
-      if (next) {
-        const res = await fetch("/api/favorites", {
-          method: "POST",
-          headers: JSON_HEADERS,
-          body: JSON.stringify(resolvedTitleId ? { titleId: resolvedTitleId } : triple),
-        });
-        if (!res.ok) throw new Error("Failed to favorite");
-        const body = (await res.json()) as { titleId: string };
-        if (!resolvedTitleId) setResolvedTitleId(body.titleId);
-      } else {
-        if (!resolvedTitleId) {
-          setFavorited(false);
-          return;
-        }
-        const res = await fetch(`/api/favorites?titleId=${resolvedTitleId}`, {
-          method: "DELETE",
-        });
-        if (!res.ok) throw new Error("Failed to unfavorite");
-      }
-      setLists((prev) =>
-        prev?.map((l) => (l.isFavorites ? { ...l, contains: next } : l)) ?? prev,
-      );
-      router.refresh();
-    } catch {
-      setFavorited(!next);
-    } finally {
-      setFavPending(false);
-    }
-  }
-
-  const compact = variant === "compact";
-  // The compact row lives inside a 3-col grid cell (~107px card at a 375px
-  // viewport, ~101px inner width once the card's own 3px border is
-  // subtracted). Three h-8 buttons at the old gap/padding summed wider than
-  // that — the row spilled a few px into the neighbouring card. h-7 + a
-  // tighter gap keeps three buttons + gaps comfortably inside the card
-  // (measured ~92px of 101px available) while staying visually Bold.
   const iconButtonClass = (active: boolean) =>
-    `hard-shadow-sm flex shrink-0 items-center justify-center border-[3px] border-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 ${
-      compact ? "h-7 w-7" : "h-11 w-11"
-    } ${active ? "bg-acid" : "bg-paper"}`;
-  const iconSizeClass = compact ? "h-3.5 w-3.5" : "h-5 w-5";
-  const gapClass = compact ? "gap-1" : "gap-2";
-  // Compact cards live inside narrow 3-col grid cells, so a popover that
-  // opened flush-left could get clipped by a neighbouring cell edge more
-  // easily than the wide detail-page bar. A higher z-index (menus already
-  // escape `overflow-hidden` per PosterCard's layout — see 1c) keeps it
-  // above sibling cards; it's still fine for it to visually overhang them.
-  const popoverZClass = compact ? "z-40" : "z-30";
+    `hard-shadow-sm flex h-11 w-11 shrink-0 items-center justify-center border-[3px] border-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 ${
+      active ? "bg-acid" : "bg-paper"
+    }`;
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className={`flex items-center ${gapClass}`}>
+      <div className="flex items-center gap-2">
         {/* Status */}
         <div className="relative">
           <button
@@ -393,7 +117,7 @@ export default function TitleActionBar({
             aria-label={status ? `Status: ${status}` : "Add to library"}
             className={iconButtonClass(!!status)}
           >
-            <TagIcon className={iconSizeClass} />
+            <TagIcon className="h-5 w-5" />
           </button>
           {statusOpen && (
             <>
@@ -404,12 +128,12 @@ export default function TitleActionBar({
                 onClick={() => setStatusOpen(false)}
                 className="fixed inset-0 z-20 cursor-default"
               />
-              <div className={`card-bold absolute left-0 top-full ${popoverZClass} mt-2 w-40 divide-y-[3px] divide-ink p-0`}>
+              <div className="card-bold absolute left-0 top-full z-30 mt-2 w-40 divide-y-[3px] divide-ink p-0">
                 {STATUS_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => handleSelectStatus(opt.value)}
+                    onClick={() => onSelectStatus(opt.value)}
                     className={`block w-full px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide ${
                       status === opt.value ? "bg-acid" : "bg-paper"
                     }`}
@@ -420,7 +144,7 @@ export default function TitleActionBar({
                 {resolvedTitleId && (
                   <button
                     type="button"
-                    onClick={handleRemove}
+                    onClick={onRemove}
                     className="block w-full bg-paper px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-[#c9482d]"
                   >
                     Remove
@@ -439,7 +163,7 @@ export default function TitleActionBar({
             aria-label="Add to list"
             className={iconButtonClass(listOpen)}
           >
-            <BookmarkPlusIcon className={iconSizeClass} />
+            <BookmarkPlusIcon className="h-5 w-5" />
           </button>
           {listOpen && (
             <>
@@ -450,7 +174,7 @@ export default function TitleActionBar({
                 onClick={() => setListOpen(false)}
                 className="fixed inset-0 z-20 cursor-default"
               />
-              <div className={`card-bold absolute left-0 top-full ${popoverZClass} mt-2 w-56 p-0`}>
+              <div className="card-bold absolute left-0 top-full z-30 mt-2 w-56 p-0">
                 {listsLoading || lists === null ? (
                   <p className="px-3 py-3 text-[11px] text-ink-soft">Loading…</p>
                 ) : lists.length === 0 ? (
@@ -483,7 +207,7 @@ export default function TitleActionBar({
                   </ul>
                 )}
                 <form
-                  onSubmit={handleCreateList}
+                  onSubmit={onCreateList}
                   className="flex gap-1 border-t-[3px] border-ink p-2"
                 >
                   <input
@@ -517,7 +241,7 @@ export default function TitleActionBar({
           aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
           className={iconButtonClass(favorited)}
         >
-          <HeartIcon filled={favorited} className={iconSizeClass} />
+          <HeartIcon filled={favorited} className="h-5 w-5" />
         </button>
       </div>
 
