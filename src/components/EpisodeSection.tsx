@@ -143,6 +143,11 @@ export default function EpisodeSection({
     activeSeason.episodes.length > 0 &&
     activeSeason.episodes.every((ep) => watched.has(ep.id));
   const isAnime = mediaType === "anime";
+  // Long-running shows (anime especially) can dump hundreds of episodes into
+  // one season — cap the list to a fixed-height scrollbox instead of letting
+  // the page grow forever. ~8 rows fit before scrolling kicks in.
+  const SCROLL_THRESHOLD = 8;
+  const needsScroll = activeSeason.episodes.length > SCROLL_THRESHOLD;
 
   return (
     <div className="mt-3">
@@ -170,7 +175,11 @@ export default function EpisodeSection({
         />
       </div>
 
-      <ul className="card-bold divide-y-[3px] divide-ink p-0">
+      <ul
+        className={`card-bold divide-y-[3px] divide-ink p-0 ${
+          needsScroll ? "max-h-[26rem] overflow-y-auto" : ""
+        }`}
+      >
         {activeSeason.episodes.map((ep) => {
           const epLabel = isAnime
             ? `E${ep.absoluteNumber ?? ep.episodeNumber}`
