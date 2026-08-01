@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
-import TitleActionBar from "@/components/TitleActionBar";
+import CardActionSheet from "@/components/CardActionSheet";
 
 export interface PosterCardTitle {
   id: string;
@@ -20,10 +20,10 @@ export interface PosterCardTitle {
 // never hidden). Plain <img>, not next/image: no remote-image domains are
 // configured and this component can't touch next.config.ts.
 //
-// `status`, when passed, renders the compact icon action bar (status / add
-// to list / favorite) below the poster — callers that already know the
-// title's current bucket (BucketSection, the Watchlist grid) pass it; omit
-// it to render a bare tile.
+// `status`, when passed, renders a small "⋯" kebab button in the top-right
+// corner of the poster that opens a bottom action sheet (status / add to
+// list / favorite) — callers that already know the title's current bucket
+// (BucketSection, the Watchlist grid) pass it; omit it to render a bare tile.
 export default function PosterCard({
   title,
   muted = false,
@@ -34,12 +34,10 @@ export default function PosterCard({
   status?: WatchStatus;
 }) {
   return (
-    <div className={`card-bold p-0 ${muted ? "opacity-60 grayscale-[35%]" : ""}`}>
+    <div className={`card-bold relative p-0 ${muted ? "opacity-60 grayscale-[35%]" : ""}`}>
       <Link href={`/title/${title.id}`}>
         {/* overflow-hidden is scoped to the poster image only (not the whole
-            card) so the compact action bar's popovers below can escape the
-            card's bounds instead of being clipped — see TitleActionBar's
-            `compact` variant. */}
+            card) so its rounded top corners stay clean. */}
         <div className="aspect-[2/3] w-full overflow-hidden rounded-t-[11px] border-b-[3px] border-ink bg-panel">
           {title.posterUrl ? (
             <img
@@ -60,18 +58,24 @@ export default function PosterCard({
           {title.title}
         </p>
       </Link>
+      {/* Sibling of the Link (not nested inside it): CardActionSheet is
+          portaled to document.body, which avoids DOM bubbling into the
+          Link, but React synthetic events still bubble through the React
+          component tree regardless of the portal target. Keeping the sheet
+          outside the Link's subtree ensures no click on its trigger or on
+          any action inside the sheet can bubble up and trigger navigation.
+          The trigger is `absolute right-1.5 top-1.5`, anchored to this now
+          `relative` card wrapper — same visual top-right position as before. */}
       {status && (
-        <div className="px-1.5 pb-1.5">
-          <TitleActionBar
-            variant="compact"
-            source={title.source}
-            sourceId={title.sourceId}
-            mediaType={title.mediaType}
-            titleId={title.id}
-            initialStatus={status}
-            initialFavorited={title.favorited ?? false}
-          />
-        </div>
+        <CardActionSheet
+          title={title.title}
+          source={title.source}
+          sourceId={title.sourceId}
+          mediaType={title.mediaType}
+          titleId={title.id}
+          initialStatus={status}
+          initialFavorited={title.favorited ?? false}
+        />
       )}
     </div>
   );

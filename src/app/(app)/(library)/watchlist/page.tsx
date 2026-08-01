@@ -49,8 +49,8 @@ export default async function WatchlistPage() {
   const animeTitles = titles.filter((t) => t.mediaType === "anime");
 
   return (
-    <div className="py-6">
-      <h1 className="display mb-2 px-4 text-3xl">Watchlist</h1>
+    <div className="pb-6">
+      <h1 className="display mb-2 px-4 pt-4 text-2xl">Watchlist</h1>
       {titles.length === 0 ? (
         <p className="card-bold mx-4 px-4 py-8 text-center text-sm text-ink-soft">
           Nothing saved yet. Add shows from Search.
