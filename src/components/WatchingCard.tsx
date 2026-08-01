@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import ProgressBar from "@/components/ProgressBar";
+import FillerTag, { type FillerType } from "@/components/FillerTag";
 
 // Everything the Home page's server component already knows about a single
 // "currently watching" title, pre-computed there (progress counts + which
@@ -20,6 +21,9 @@ export interface WatchingCardData {
   // The earliest aired-but-unwatched episode's id, or null when there isn't
   // one — i.e. the finale-guard case ("All caught up").
   nextUnwatchedEpisodeId: string | null;
+  // Anime-only canon/filler/mixed tag for the next-up episode, from
+  // animefillerlist.com — absent for TV or when there's no next episode/match.
+  nextEpisodeFillerType?: FillerType;
 }
 
 function formatAirDate(iso: string | null): string | null {
@@ -224,10 +228,15 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
           <h3 className="display truncate text-lg">{data.title}</h3>
         </Link>
         <ProgressBar watched={displayedCount} total={data.totalCount} />
-        <p className="text-xs font-semibold text-ink-soft">
-          {airDateLabel
-            ? `Next: ${data.nextEpisodeLabel ?? "Episode"} · ${airDateLabel}`
-            : "No upcoming episode scheduled"}
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
+          <span>
+            {airDateLabel
+              ? `Next: ${data.nextEpisodeLabel ?? "Episode"} · ${airDateLabel}`
+              : "No upcoming episode scheduled"}
+          </span>
+          {!caughtUp && data.nextEpisodeFillerType && (
+            <FillerTag type={data.nextEpisodeFillerType} />
+          )}
         </p>
       </div>
 
