@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import ProfileEditor from "@/components/ProfileEditor";
@@ -67,7 +68,13 @@ export default async function AccountPage() {
         </form>
       </div>
 
-      {/* TODO: per-user stats (shows tracked, episodes watched) once designed. */}
+      <Link
+        href="/account/stats"
+        className="card-bold mt-3 flex items-center justify-between gap-3 bg-acid p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+      >
+        <p className="text-sm font-bold uppercase tracking-wide">View Your Stats</p>
+        <span className="display text-lg">→</span>
+      </Link>
     </div>
   );
 }
