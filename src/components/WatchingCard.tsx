@@ -27,6 +27,10 @@ export interface WatchingCardData {
   // Anime-only canon/filler/mixed tag for the next-up episode, from
   // animefillerlist.com — absent for TV or when there's no next episode/match.
   nextEpisodeFillerType?: FillerType;
+  // Overview/synopsis text for the next-unwatched episode, shown in an
+  // expandable panel on the card. Null when there's no next episode, or the
+  // episode has no stored overview (common for anime).
+  nextEpisodeOverview: string | null;
 }
 
 // Round check-circle mark button, matching the Bold prototype: 52px circle,
@@ -70,7 +74,7 @@ function MarkButton({
           : { duration: 0.38, ease: "easeInOut" }
       }
       whileTap={!caughtUp && !pending ? { scale: 0.94 } : undefined}
-      className={`relative flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border-[3px] border-ink transition-colors duration-150 ${
+      className={`relative flex h-[52px] w-[52px] shrink-0 items-center justify-center self-center rounded-full border-[3px] border-ink transition-colors duration-150 ${
         justMarked
           ? "bg-ink shadow-[3px_3px_0_0_var(--color-ink)]"
           : caughtUp
@@ -127,6 +131,7 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
   const [popCount, setPopCount] = useState(0);
   const [shakeCount, setShakeCount] = useState(0);
   const [toast, setToast] = useState<{ message: string; withUndo: boolean } | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -204,7 +209,7 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
   }
 
   return (
-    <div className="card-bold relative flex items-center gap-3 p-3">
+    <div className="card-bold relative flex items-start gap-3 p-3">
       <Link
         href={`/title/${data.titleId}`}
         className="h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel"
@@ -218,24 +223,46 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
         ) : null}
       </Link>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 self-center">
         <Link href={`/title/${data.titleId}`} className="block">
           <h3 className="display truncate text-lg">{data.title}</h3>
         </Link>
         <ProgressBar watched={displayedCount} total={data.totalCount} />
-        <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-soft">
-          {caughtUp ? (
+        {caughtUp ? (
+          <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-soft">
             <span>All caught up</span>
-          ) : (
-            <>
+          </p>
+        ) : (
+          <>
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((prev) => !prev)}
+              className="flex min-w-0 items-center gap-1.5 text-left text-xs font-semibold text-ink-soft"
+            >
               <span className="min-w-0 truncate">
                 Up next · {data.nextEpisodeCode}
                 {data.nextEpisodeName ? ` · ${data.nextEpisodeName}` : ""}
               </span>
               {data.nextEpisodeFillerType && <FillerTag type={data.nextEpisodeFillerType} />}
-            </>
-          )}
-        </p>
+              <span
+                aria-hidden="true"
+                className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+              >
+                ▾
+              </span>
+            </button>
+            {expanded && (
+              <div className="mt-2 border-t-[3px] border-ink pt-2">
+                <p className="text-xs leading-relaxed text-ink-soft">
+                  {data.nextEpisodeOverview && data.nextEpisodeOverview.trim().length > 0
+                    ? data.nextEpisodeOverview
+                    : "No description available."}
+                </p>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <MarkButton

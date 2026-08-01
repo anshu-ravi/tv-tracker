@@ -31,6 +31,7 @@ interface EpisodeRow {
   absolute_number: number | null;
   name: string | null;
   air_date: string | null;
+  overview: string | null;
 }
 
 interface WatchedEpisodeRow {
@@ -132,7 +133,9 @@ export default async function HomePage() {
   const [{ data: episodesData }, { data: watchedData }] = await Promise.all([
     supabase
       .from("episodes")
-      .select("id, title_id, season_number, episode_number, absolute_number, name, air_date")
+      .select(
+        "id, title_id, season_number, episode_number, absolute_number, name, air_date, overview",
+      )
       .in("title_id", titleIds)
       .order("season_number", { ascending: true })
       .order("episode_number", { ascending: true }),
@@ -194,6 +197,8 @@ export default async function HomePage() {
         : nextEpisode.name
       : null;
 
+    const nextEpisodeOverview = nextEpisode?.overview ?? null;
+
     return {
       titleId: ut.title_id,
       title: title.title,
@@ -204,6 +209,7 @@ export default async function HomePage() {
       nextEpisodeCode,
       nextEpisodeName,
       nextEpisodeFillerType,
+      nextEpisodeOverview,
     };
   });
 

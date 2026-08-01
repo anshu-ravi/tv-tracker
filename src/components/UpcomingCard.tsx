@@ -37,9 +37,13 @@ export default function UpcomingCard({ item }: { item: UpcomingItem }) {
         {item.episodeLabel && (
           <p className="truncate text-xs font-semibold text-ink-soft">{item.episodeLabel}</p>
         )}
-        <p className="text-xs font-extrabold uppercase tracking-wide text-ink">
+        <span
+          className={`inline-block w-fit border-[2px] border-ink px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shadow-[2px_2px_0_0_var(--color-ink)] ${
+            item.daysUntil <= 1 ? "bg-acid text-ink" : "bg-panel text-ink"
+          }`}
+        >
           {daysUntilLabel(item.daysUntil)}
-        </p>
+        </span>
       </div>
     </Link>
   );
