@@ -10,6 +10,7 @@ const TABS = [
   { href: "/tv", label: "TV" },
   { href: "/anime", label: "Anime" },
   { href: "/watchlist", label: "Watchlist" },
+  { href: "/lists", label: "Lists" },
   { href: "/search", label: "Search" },
 ] as const;
 
