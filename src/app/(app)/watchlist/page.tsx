@@ -1,13 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { getFavoriteTitleIds } from "@/lib/favorites";
 import { type PosterCardTitle } from "@/components/PosterCard";
 import WatchlistCarousel from "@/components/WatchlistCarousel";
-import type { MediaType } from "@/lib/types";
+import type { DataSource, MediaType } from "@/lib/types";
 
 interface TitleRow {
   id: string;
   title: string;
   poster_url: string | null;
   media_type: MediaType;
+  source: DataSource;
+  source_id: string;
 }
 
 interface UserTitleRow {
@@ -20,10 +23,13 @@ interface UserTitleRow {
 export default async function WatchlistPage() {
   const supabase = await createClient();
 
-  const { data } = await supabase
-    .from("user_titles")
-    .select("titles(id, title, poster_url, media_type)")
-    .eq("status", "watchlist");
+  const [{ data }, favoriteIds] = await Promise.all([
+    supabase
+      .from("user_titles")
+      .select("titles(id, title, poster_url, media_type, source, source_id)")
+      .eq("status", "watchlist"),
+    getFavoriteTitleIds(supabase),
+  ]);
 
   const rows = (data ?? []) as unknown as UserTitleRow[];
 
@@ -34,6 +40,9 @@ export default async function WatchlistPage() {
       title: r.titles.title,
       posterUrl: r.titles.poster_url,
       mediaType: r.titles.media_type,
+      source: r.titles.source,
+      sourceId: r.titles.source_id,
+      favorited: favoriteIds.has(r.titles.id),
     }));
 
   const tvTitles = titles.filter((t) => t.mediaType === "tv");

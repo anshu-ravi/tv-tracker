@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/BackButton";
 import ListDetailControls from "@/components/ListDetailControls";
-import ListTitleCard from "@/components/ListTitleCard";
+import ListTitlesView from "@/components/ListTitlesView";
+import AddToListPicker, { type AddToListCandidate } from "@/components/AddToListPicker";
 import type { PosterCardTitle } from "@/components/PosterCard";
-import type { MediaType } from "@/lib/types";
+import type { DataSource, MediaType } from "@/lib/types";
 
 interface ListRow {
   id: string;
@@ -12,14 +13,22 @@ interface ListRow {
   is_favorites: boolean;
 }
 
+interface CatalogTitleRow {
+  id: string;
+  title: string;
+  poster_url: string | null;
+  media_type: MediaType;
+  source: DataSource;
+  source_id: string;
+}
+
 interface ListTitleRow {
   title_id: string;
-  titles: {
-    id: string;
-    title: string;
-    poster_url: string | null;
-    media_type: MediaType;
-  } | null;
+  titles: CatalogTitleRow | null;
+}
+
+interface UserTitleRow {
+  titles: CatalogTitleRow | null;
 }
 
 export default async function ListDetailPage({
@@ -42,10 +51,18 @@ export default async function ListDetailPage({
   const list = listData as ListRow | null;
   if (!list) notFound();
 
-  const { data: titlesData } = await supabase
-    .from("list_titles")
-    .select("title_id, titles(id, title, poster_url, media_type)")
-    .eq("list_id", listId);
+  // The list's own members, and (in parallel) the user's whole tracked
+  // library — the latter is the candidate pool for "＋ Add shows" once
+  // members already in this list are filtered out below.
+  const [{ data: titlesData }, { data: libraryData }] = await Promise.all([
+    supabase
+      .from("list_titles")
+      .select("title_id, titles(id, title, poster_url, media_type, source, source_id)")
+      .eq("list_id", listId),
+    supabase
+      .from("user_titles")
+      .select("titles(id, title, poster_url, media_type, source, source_id)"),
+  ]);
 
   const rows = (titlesData ?? []) as unknown as ListTitleRow[];
   const titles: PosterCardTitle[] = rows
@@ -55,7 +72,24 @@ export default async function ListDetailPage({
       title: r.titles!.title,
       posterUrl: r.titles!.poster_url,
       mediaType: r.titles!.media_type,
+      source: r.titles!.source,
+      sourceId: r.titles!.source_id,
     }));
+
+  const memberIds = new Set(titles.map((t) => t.id));
+  const libraryRows = (libraryData ?? []) as unknown as UserTitleRow[];
+  // De-dupe by title id — a title tracked once still only needs to appear
+  // once in the picker even though user_titles is one row per title anyway.
+  const candidatesById = new Map<string, AddToListCandidate>();
+  for (const row of libraryRows) {
+    if (!row.titles || memberIds.has(row.titles.id)) continue;
+    candidatesById.set(row.titles.id, {
+      id: row.titles.id,
+      title: row.titles.title,
+      posterUrl: row.titles.poster_url,
+    });
+  }
+  const candidates = Array.from(candidatesById.values());
 
   return (
     <div className="pb-6">
@@ -72,25 +106,14 @@ export default async function ListDetailPage({
           {titles.length} title{titles.length === 1 ? "" : "s"}
         </p>
 
-        {!list.is_favorites && (
-          <div className="mt-3">
-            <ListDetailControls listId={list.id} name={list.name} />
-          </div>
-        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <AddToListPicker listId={list.id} candidates={candidates} />
+          {!list.is_favorites && <ListDetailControls listId={list.id} name={list.name} />}
+        </div>
       </div>
 
       <div className="px-4 pt-5">
-        {titles.length === 0 ? (
-          <p className="card-bold px-4 py-8 text-center text-sm text-ink-soft">
-            Nothing in this list yet.
-          </p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {titles.map((title) => (
-              <ListTitleCard key={title.id} listId={list.id} title={title} />
-            ))}
-          </div>
-        )}
+        <ListTitlesView listId={list.id} titles={titles} />
       </div>
     </div>
   );

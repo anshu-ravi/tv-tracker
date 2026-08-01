@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { getFavoriteTitleIds } from "@/lib/favorites";
 import BucketSection, { BUCKET_ORDER } from "@/components/BucketSection";
 import type { PosterCardTitle } from "@/components/PosterCard";
-import type { MediaType, WatchStatus } from "@/lib/types";
+import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 
 // Shared by the TV and Anime tabs — both are "all of this media_type, split
 // into the four status buckets, DNF muted." Only the media_type + heading
@@ -12,6 +13,8 @@ interface TitleRow {
   title: string;
   poster_url: string | null;
   media_type: MediaType;
+  source: DataSource;
+  source_id: string;
 }
 
 interface UserTitleRow {
@@ -31,10 +34,13 @@ export default async function BucketedGridPage({
   // `titles!inner` + a filter on the embedded resource restricts to rows
   // whose joined title actually matches this media_type (an inner join, not
   // left), so a tv-only user never sees stray anime rows here.
-  const { data } = await supabase
-    .from("user_titles")
-    .select("status, titles!inner(id, title, poster_url, media_type)")
-    .eq("titles.media_type", mediaType);
+  const [{ data }, favoriteIds] = await Promise.all([
+    supabase
+      .from("user_titles")
+      .select("status, titles!inner(id, title, poster_url, media_type, source, source_id)")
+      .eq("titles.media_type", mediaType),
+    getFavoriteTitleIds(supabase),
+  ]);
 
   const rows = (data ?? []) as unknown as UserTitleRow[];
 
@@ -52,6 +58,9 @@ export default async function BucketedGridPage({
       title: row.titles.title,
       posterUrl: row.titles.poster_url,
       mediaType: row.titles.media_type,
+      source: row.titles.source,
+      sourceId: row.titles.source_id,
+      favorited: favoriteIds.has(row.titles.id),
     });
   }
 
