@@ -12,11 +12,34 @@ export interface SeasonEpisode {
   absoluteNumber: number | null;
   name: string | null;
   airLabel: string | null;
+  // Anime-only, from animefillerlist.com — absent for TV or unmatched shows.
+  fillerType?: "canon" | "filler" | "mixed";
 }
 
 export interface SeasonGroup {
   seasonNumber: number;
   episodes: SeasonEpisode[];
+}
+
+// Bold-styled tag classes per filler type — small, hard-bordered, fits
+// inline next to the episode label on a phone-width row.
+const FILLER_TAG_CLASS: Record<
+  NonNullable<SeasonEpisode["fillerType"]>,
+  string
+> = {
+  canon: "bg-acid text-ink",
+  filler: "bg-[#ff5c39] text-ink",
+  mixed: "bg-panel text-ink-soft",
+};
+
+function FillerTag({ type }: { type: NonNullable<SeasonEpisode["fillerType"]> }) {
+  return (
+    <span
+      className={`shrink-0 border-2 border-ink px-1 py-0.5 text-[8px] font-bold uppercase leading-none ${FILLER_TAG_CLASS[type]}`}
+    >
+      {type}
+    </span>
+  );
 }
 
 // Owns the one source of truth for "which episodes are watched" across the
@@ -153,7 +176,10 @@ export default function EpisodeSection({
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         {isAnime || seasons.length <= 1 ? (
-          <h3 className="display text-base">Episodes</h3>
+          // page.tsx already renders the "Episodes" <h2> section header —
+          // no label needed here, just keep the spacer so the mark-season
+          // button stays pinned right via justify-between.
+          <span />
         ) : (
           <select
             value={activeSeason.seasonNumber}
@@ -191,14 +217,17 @@ export default function EpisodeSection({
                 pending={pendingEpisodeIds.has(ep.id)}
                 onToggle={() => toggleEpisode(ep.id)}
               />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold uppercase tracking-wide">
-                  {epLabel}
-                  {ep.name ? ` · ${ep.name}` : ""}
-                </p>
-                {ep.airLabel && (
-                  <p className="text-[10px] text-ink-soft">{ep.airLabel}</p>
-                )}
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold uppercase tracking-wide">
+                    {epLabel}
+                    {ep.name ? ` · ${ep.name}` : ""}
+                  </p>
+                  {ep.airLabel && (
+                    <p className="text-[10px] text-ink-soft">{ep.airLabel}</p>
+                  )}
+                </div>
+                {ep.fillerType && <FillerTag type={ep.fillerType} />}
               </div>
             </li>
           );
