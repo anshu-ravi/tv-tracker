@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAnimeCredits } from "@/lib/anilist";
 import { getTvCredits } from "@/lib/tmdb";
+import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import type { DataSource, MediaType, TitleCredits, WatchStatus } from "@/lib/types";
 
@@ -130,13 +131,24 @@ export default async function TitleDetailPage({
 
   return (
     <div className="pb-10">
-      {title.backdrop_url && (
-        <div className="aspect-[16/9] w-full border-b-[3px] border-ink bg-panel">
-          <img
-            src={title.backdrop_url}
-            alt=""
-            className="h-full w-full object-cover"
-          />
+      {title.backdrop_url ? (
+        // Float over the backdrop image.
+        <div className="relative">
+          <div className="aspect-[16/9] w-full border-b-[3px] border-ink bg-panel">
+            <img
+              src={title.backdrop_url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </div>
+          <div className="absolute left-4 top-4">
+            <BackButton />
+          </div>
+        </div>
+      ) : (
+        // No backdrop to sit over — render in normal flow instead.
+        <div className="px-4 pt-4">
+          <BackButton />
         </div>
       )}
 
