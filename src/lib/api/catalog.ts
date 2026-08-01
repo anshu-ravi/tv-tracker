@@ -13,6 +13,7 @@
 import { getAnimeTitle } from "@/lib/anilist";
 import { getTvTitle } from "@/lib/tmdb";
 import { getEpisodeSynopsis, getEpisodeTitles } from "@/lib/jikan";
+import { resolveAnimeTmdbMatch, applyTmdbAnimeMatch } from "@/lib/tmdbAnimeMatch";
 import type {
   DataSource,
   MediaType,
@@ -203,6 +204,69 @@ async function enrichAnimeEpisodes(
   }
 }
 
+// ---- anime episode enrichment (TMDB) ------------------------------------
+
+// AniList has episode air dates but (like Jikan) no per-episode synopsis at
+// all — see lib/tmdbAnimeMatch.ts for the full rationale and matching logic.
+// This just wires it in: skip fast if a previous run already tried and
+// failed (tmdb_match_checked_at set, tmdb_match_id still null — no point
+// re-searching TMDB every refresh for a show it couldn't find), otherwise
+// resolve (or re-resolve, if previously matched — cheap idempotent re-check
+// that also picks up newly added episodes) and persist. Best-effort: any
+// failure here is logged and swallowed, exactly like enrichAnimeEpisodes
+// above — this must never break a catalog refresh.
+interface TitleTmdbMatchStateRow {
+  tmdb_match_id: number | null;
+  tmdb_match_checked_at: string | null;
+}
+
+async function enrichAnimeFromTmdb(
+  supabase: SupabaseClient,
+  titleId: string,
+  anime: {
+    titleEnglish: string | null;
+    titleRomaji: string | null;
+    title: NormalizedTitle;
+  },
+): Promise<void> {
+  try {
+    const { data: titleRow, error: titleRowError } = await supabase
+      .from("titles")
+      .select("tmdb_match_id, tmdb_match_checked_at")
+      .eq("id", titleId)
+      .maybeSingle();
+    if (titleRowError || !titleRow) return;
+
+    const state = titleRow as TitleTmdbMatchStateRow;
+    if (state.tmdb_match_checked_at && !state.tmdb_match_id) return; // previously failed — don't retry every run
+
+    // Prefer the already-written absolute-episode-1 row's air date over
+    // AniList's show-level firstAirDate (a real episode air date is a
+    // tighter check than a series premiere date that can predate episode 1
+    // in some entries).
+    let ep1AirDate: string | null = anime.title.firstAirDate ?? null;
+    const { data: ep1 } = await supabase
+      .from("episodes")
+      .select("air_date")
+      .eq("title_id", titleId)
+      .eq("season_number", 1)
+      .eq("absolute_number", 1)
+      .maybeSingle();
+    if (ep1?.air_date) ep1AirDate = ep1.air_date;
+
+    const result = await resolveAnimeTmdbMatch({
+      anilistTitleEnglish: anime.titleEnglish,
+      anilistTitleRomaji: anime.titleRomaji,
+      anilistTotalEpisodes: anime.title.totalEpisodes ?? null,
+      anilistEp1AirDate: ep1AirDate,
+    });
+
+    await applyTmdbAnimeMatch(supabase, titleId, result);
+  } catch (err) {
+    console.error("TMDB anime enrichment failed for title", titleId, err);
+  }
+}
+
 export async function ensureCatalogTitle(
   supabase: SupabaseClient,
   { source, sourceId, mediaType }: EnsureCatalogTitleInput,
@@ -270,6 +334,10 @@ export async function refreshCatalogTitle(
 
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
   let malId: number | null = null;
+  // Raw AniList title strings for the TMDB anime matcher (lib/tmdbAnimeMatch.ts)
+  // — captured separately from `fetched` since that's typed to the
+  // provider-agnostic shape both branches share.
+  let anilistTitles: { titleEnglish: string | null; titleRomaji: string | null } | null = null;
   try {
     if (row.media_type === "tv" && row.source === "tmdb") {
       // { fresh: true } bypasses TMDB's hour-long HTTP cache (see
@@ -279,6 +347,7 @@ export async function refreshCatalogTitle(
       const anime = await getAnimeTitle(row.source_id);
       fetched = anime;
       malId = anime.malId;
+      anilistTitles = { titleEnglish: anime.titleEnglish, titleRomaji: anime.titleRomaji };
     } else {
       return { error: "Unsupported source/mediaType combination", status: 400 };
     }
@@ -293,7 +362,18 @@ export async function refreshCatalogTitle(
   // Best-effort episode title/synopsis backfill — never blocks the response.
   // A refresh (this function) is exactly when this enrichment should run:
   // it's the point where episode rows for a title get (re)written.
-  if (row.media_type === "anime") await enrichAnimeEpisodes(supabase, result.titleId, malId);
+  if (row.media_type === "anime") {
+    await enrichAnimeEpisodes(supabase, result.titleId, malId);
+    // TMDB enrichment runs alongside Jikan's, not instead — see
+    // enrichAnimeFromTmdb above.
+    if (anilistTitles) {
+      await enrichAnimeFromTmdb(supabase, result.titleId, {
+        titleEnglish: anilistTitles.titleEnglish,
+        titleRomaji: anilistTitles.titleRomaji,
+        title: result.title,
+      });
+    }
+  }
 
   return {
     titleId: result.titleId,

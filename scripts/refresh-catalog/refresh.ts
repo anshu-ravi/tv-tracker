@@ -21,6 +21,7 @@ import { loadEnv } from "./lib/env";
 import { getTvTitle } from "./lib/tmdb";
 import { getAnimeTitle } from "./lib/anilist";
 import { getEpisodeSynopsis, getEpisodeTitles } from "./lib/jikan";
+import { resolveAnimeTmdbMatch, applyTmdbAnimeMatch } from "./lib/tmdbAnimeMatch";
 
 // See src/lib/api/catalog.ts's enrichAnimeEpisodes for the full rationale —
 // this mirrors that logic for the standalone script. Synopses are one Jikan
@@ -91,6 +92,59 @@ async function enrichAnimeEpisodes(supabase: any, titleId: string, malId: number
     }
   } catch (err) {
     console.error("  Jikan enrichment failed:", err);
+  }
+}
+
+// Mirrors src/lib/api/catalog.ts's enrichAnimeFromTmdb — see
+// lib/tmdbAnimeMatch.ts for the full rationale. Skips fast if a previous run
+// already tried and failed (checked_at set, tmdb_match_id still null); best
+// effort otherwise, never throws.
+interface TitleTmdbMatchStateRow {
+  tmdb_match_id: number | null;
+  tmdb_match_checked_at: string | null;
+}
+
+async function enrichAnimeFromTmdb(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  apiKey: string,
+  titleId: string,
+  anime: { titleEnglish: string | null; titleRomaji: string | null; firstAirDate: string | null; totalEpisodes: number | null },
+): Promise<void> {
+  try {
+    const { data: titleRow, error: titleRowError } = await supabase
+      .from("titles")
+      .select("tmdb_match_id, tmdb_match_checked_at")
+      .eq("id", titleId)
+      .maybeSingle();
+    if (titleRowError || !titleRow) return;
+
+    const state = titleRow as TitleTmdbMatchStateRow;
+    if (state.tmdb_match_checked_at && !state.tmdb_match_id) return;
+
+    let ep1AirDate: string | null = anime.firstAirDate ?? null;
+    const { data: ep1 } = await supabase
+      .from("episodes")
+      .select("air_date")
+      .eq("title_id", titleId)
+      .eq("season_number", 1)
+      .eq("absolute_number", 1)
+      .maybeSingle();
+    if (ep1?.air_date) ep1AirDate = ep1.air_date;
+
+    const result = await resolveAnimeTmdbMatch(apiKey, {
+      anilistTitleEnglish: anime.titleEnglish,
+      anilistTitleRomaji: anime.titleRomaji,
+      anilistTotalEpisodes: anime.totalEpisodes,
+      anilistEp1AirDate: ep1AirDate,
+    });
+
+    const { episodesUpdated } = await applyTmdbAnimeMatch(supabase, titleId, result);
+    if (result.matched) {
+      console.log(`        TMDB match: ${result.tmdbName} (${result.strategy}) — ${episodesUpdated} episode(s) enriched`);
+    }
+  } catch (err) {
+    console.error("  TMDB anime match failed:", err);
   }
 }
 
@@ -189,6 +243,15 @@ async function main() {
 
       if (t.media_type === "anime") {
         await enrichAnimeEpisodes(supabase, t.id, malId);
+        // TMDB enrichment runs alongside Jikan's, not instead.
+        if ("titleEnglish" in fetched) {
+          await enrichAnimeFromTmdb(supabase, env.TMDB_API_KEY, t.id, {
+            titleEnglish: fetched.titleEnglish,
+            titleRomaji: fetched.titleRomaji,
+            firstAirDate: title.firstAirDate,
+            totalEpisodes: title.totalEpisodes,
+          });
+        }
       }
 
       const seasonCount = new Set(episodes.map((ep) => ep.seasonNumber)).size;

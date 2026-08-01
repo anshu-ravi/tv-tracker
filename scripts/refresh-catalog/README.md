@@ -68,3 +68,10 @@ are ever printed.
 - Uses the Supabase service role key to bypass RLS, same as
   `trakt-import/lib/execute.ts` — confined to this offline script, never
   shipped in the app.
+- Anime titles also get a best-effort TMDB enrichment pass (`lib/tmdbAnimeMatch.ts`,
+  mirroring `src/lib/tmdbAnimeMatch.ts`) that fills `overview`/`still_url`/
+  `runtime`/`name` on episode rows from a fuzzy-matched TMDB show — see
+  `scripts/tmdb-anime-match/README.md` for the full matching rules. A title
+  whose match previously failed (`titles.tmdb_match_checked_at` set,
+  `tmdb_match_id` still null) is skipped here rather than re-searched every
+  run.

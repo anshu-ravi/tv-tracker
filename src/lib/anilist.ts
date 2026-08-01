@@ -175,6 +175,12 @@ export async function getAnimeTitle(
   title: NormalizedTitle;
   episodes: NormalizedEpisode[];
   malId: number | null;
+  // Raw English/romaji title strings — NormalizedTitle.title already collapses
+  // these to a single best display string (see pickTitle), but
+  // lib/tmdbAnimeMatch.ts needs both separately to try an English TMDB search
+  // first and fall back to romaji.
+  titleEnglish: string | null;
+  titleRomaji: string | null;
 }> {
   const data = await anilist<{ Media: AniDetailMedia }>(DETAIL_QUERY, {
     id: Number(id),
@@ -235,7 +241,13 @@ export async function getAnimeTitle(
     });
   }
 
-  return { title, episodes, malId: m.idMal ?? null };
+  return {
+    title,
+    episodes,
+    malId: m.idMal ?? null,
+    titleEnglish: m.title.english,
+    titleRomaji: m.title.romaji,
+  };
 }
 
 // Creators + top cast (voice actors) for the detail screen. Fetched
