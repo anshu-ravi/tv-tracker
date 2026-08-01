@@ -362,12 +362,18 @@ export default function TitleActionBar({
   }
 
   const compact = variant === "compact";
+  // The compact row lives inside a 3-col grid cell (~107px card at a 375px
+  // viewport, ~101px inner width once the card's own 3px border is
+  // subtracted). Three h-8 buttons at the old gap/padding summed wider than
+  // that — the row spilled a few px into the neighbouring card. h-7 + a
+  // tighter gap keeps three buttons + gaps comfortably inside the card
+  // (measured ~92px of 101px available) while staying visually Bold.
   const iconButtonClass = (active: boolean) =>
     `hard-shadow-sm flex shrink-0 items-center justify-center border-[3px] border-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 ${
-      compact ? "h-8 w-8" : "h-11 w-11"
+      compact ? "h-7 w-7" : "h-11 w-11"
     } ${active ? "bg-acid" : "bg-paper"}`;
-  const iconSizeClass = compact ? "h-4 w-4" : "h-5 w-5";
-  const gapClass = compact ? "gap-1.5" : "gap-2";
+  const iconSizeClass = compact ? "h-3.5 w-3.5" : "h-5 w-5";
+  const gapClass = compact ? "gap-1" : "gap-2";
   // Compact cards live inside narrow 3-col grid cells, so a popover that
   // opened flush-left could get clipped by a neighbouring cell edge more
   // easily than the wide detail-page bar. A higher z-index (menus already
