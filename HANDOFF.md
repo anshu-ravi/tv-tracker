@@ -13,7 +13,7 @@ add a title to a bucket, browse buckets, open a title's detail screen, and mark
 episodes (per-episode or a whole season) watched. Everything below is merged to
 `main`.
 
-> ⚠️ `main` is **NOT pushed** — it's ~44 commits ahead of `origin/main`. The user
+> ⚠️ `main` is **NOT pushed** — it's ~50+ commits ahead of `origin/main`. The user
 > pushes manually. Local `main` has the full history; push when you want the
 > remote in sync.
 
@@ -26,9 +26,12 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
 - **Auth** — email+password, single user. `/login` (sign-in + first-run
   create-account server actions), `/auth/confirm` (OTP link), sign-out. Confirm-email
   is turned OFF in Supabase. **Runtime-tested.**
-- **Data clients** (`src/lib/`) — `tmdb.ts` (TV search/details/episodes + credits),
-  `anilist.ts` (anime search/airing + credits), `animefillerlist.ts` (anime episode
-  names + canon/filler/mixed, scraped + cached, server-only), `types.ts`.
+- **Data clients** (`src/lib/`) — `tmdb.ts` (TV search/details/episodes + credits
+  + `getTvImdbId`), `anilist.ts` (anime search/airing + credits + `getAnimeScore`),
+  `animefillerlist.ts` (anime episode names + canon/filler/mixed, scraped + cached,
+  server-only), `ratings.ts` (server-only: IMDb + Rotten Tomatoes via OMDb for TV,
+  AniList average score for anime — live-fetched on the detail page, not stored;
+  degrades to nothing when `OMDB_API_KEY` is missing/no match), `types.ts`.
 - **API routes** (`src/app/api/**`) — `GET /api/search?q=` (merges TMDB+AniList,
   **prefers AniList / dedupes the TMDB-TV duplicate**), `POST /api/titles` (add:
   fetch details → upsert `titles`+`episodes` → upsert `user_titles`),
@@ -37,17 +40,28 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
   /api/titles/:id/season/:n/watch` (bulk season). Shared `requireUser()` guard
   (`src/lib/api/auth.ts`); all 401 without a session.
 - **Screens** (`src/app/(app)/`, bottom-tab shell) —
-  - **Home**: currently-watching cards. Mark-watched matches the design prototype
-    (round acid check-circle, punch + "+1 EP" fly-up, thin ink progress bar, 2.5s
-    undo toast, finale guard). Cards link to the detail screen.
-  - **TV / Anime**: poster grids split into the 4 buckets, DNF muted. **Watchlist**.
-    **Search**: results grid, add-to-bucket. Every poster tile has an inline
-    **status dropdown + ✕ remove** (`TitleActions`) and links to the detail screen.
+  - **Home** (`HomeTabs`): two client subtabs — **Currently Watching** and
+    **Upcoming**. Watching cards keep the mark-watched micro-interaction (round acid
+    check-circle, punch + "+1 EP" fly-up, thin ink progress bar, 2.5s undo toast,
+    finale guard) and now show the **exact next episode to watch** as
+    "Up next · {code} · {name}" (name from the DB for TV, animefillerlist for anime)
+    with its CANON/FILLER/MIXED tag; ended/finished shows read **"All caught up"**.
+    Tapping the "Up next" line **expands that episode's description inline**. Upcoming
+    lists running shows with a soon episode + not-yet-released watchlist titles, each
+    with an **"airs in N days"** badge (`UpcomingCard`), sorted soonest-first.
+  - **TV / Anime**: poster grids split into the 4 buckets, DNF muted.
+    **Watchlist**: two **swipeable carousels** (TV + Anime, native scroll-snap) via
+    `WatchlistCarousel`, not a grid. **Search**: **live debounced search-as-you-type**
+    (`SearchClient` — 350ms debounce, 2-char min, AbortController cancellation; no more
+    Go button), add-to-bucket. Poster tiles have an inline **status dropdown + ✕
+    remove** (`TitleActions`) and link to the detail screen.
   - **Detail** (`/title/[titleId]`): backdrop/poster/overview, **creator + cast**
-    (live from TMDB/AniList), **Back** button, and an episode list with a **season
-    dropdown**, per-episode ticks, **mark/unmark whole season** (ticks update
-    instantly), a **scroll box** for long seasons, and — for anime — **episode
-    names + CANON/FILLER/MIXED tags** from animefillerlist.
+    (live from TMDB/AniList), **IMDb / Rotten Tomatoes / AniList rating chips**
+    (`RatingBadges`, live from `ratings.ts`), **Back** button, and an episode list
+    with a **season dropdown**, per-episode ticks, **mark/unmark whole season** (ticks
+    update instantly), a **scroll box** for long seasons, **click-to-expand episode
+    descriptions**, and — for anime — **episode names + CANON/FILLER/MIXED tags** from
+    animefillerlist.
 - **Mobile framing** — whole app clamped to a centered `max-w-md` phone-width column
   with full-height `border-x` (looks the same on desktop as on a phone); grids fixed
   at 3 columns.
@@ -67,11 +81,11 @@ is excluded from the app's tsc/eslint (Deno runtime).
    or the Vault variant), enable `pg_cron`/`pg_net`, apply the migration, run the
    Supabase advisors, and verify the Edge Function's inferred column names against
    the live schema first. Needs owner approval (live side-effects).
-2. **Data cleanup** — **Bleach** and **Code Geass** are stored as **TV**
-   (`source=tmdb`) from early adds, so they get no anime filler tags. Remove them
-   (✕ on the tile) and re-add via Search (now prefers AniList) to reclassify as
-   anime. Note: **Naruto** was added (Watchlist) as an anime demo.
-3. **Polish backlog (optional)** — the app uses plain `<img>` (6 eslint LCP
+2. **Data cleanup** — **Bleach** now shows anime filler tags on Home, so it appears
+   reclassified as anime (`source=anilist`); double-check **Code Geass** (may still be
+   stored as **TV** `source=tmdb` from an early add — remove ✕ and re-add via Search,
+   which prefers AniList, to get filler tags). **Naruto** is a Watchlist anime demo.
+3. **Polish backlog (optional)** — the app uses plain `<img>` (7 eslint LCP
    *warnings*, no errors); could move to `next/image` with configured domains.
    Movies are still deferred (schema reserves room).
 
@@ -84,8 +98,10 @@ npm run lint     # eslint (only expected <img> warnings)
 npm test         # vitest (53 tests)
 ```
 
-Needs `.env.local` (present) + `TMDB_API_KEY` in `.env` (present, never read).
-AniList + animefillerlist need no key. Supabase project ref: `ermhfiofisjsrniccqlv`.
+Needs `.env.local` (present) + `TMDB_API_KEY` in `.env` (present, never read) +
+`OMDB_API_KEY` in `.env` (added by the user, powers the detail-page IMDb/RT chips;
+never read — reference as `process.env.OMDB_API_KEY`, ratings degrade to nothing if
+absent). AniList + animefillerlist need no key. Supabase project ref: `ermhfiofisjsrniccqlv`.
 
 - **Test account:** `admin2@admin.com` exists (there are 2 auth users — one is
   likely a stray from a first sign-up attempt; harmless).
