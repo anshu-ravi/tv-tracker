@@ -259,3 +259,20 @@ export async function getAnimeCredits(id: string): Promise<TitleCredits> {
 
   return { creators, cast };
 }
+
+const SCORE_QUERY = `
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    averageScore
+  }
+}`;
+
+// AniList's community average score (0-100), the anime equivalent of an
+// IMDb/RT rating. Null when AniList has no score for the title.
+export async function getAnimeScore(id: string): Promise<number | null> {
+  const data = await anilist<{ Media: { averageScore: number | null } }>(
+    SCORE_QUERY,
+    { id: Number(id) },
+  );
+  return data?.Media?.averageScore ?? null;
+}

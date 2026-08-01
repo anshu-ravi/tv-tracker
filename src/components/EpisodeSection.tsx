@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import EpisodeTick from "@/components/EpisodeTick";
 import SeasonControls from "@/components/SeasonControls";
+import FillerTag, { type FillerType } from "@/components/FillerTag";
 import type { MediaType } from "@/lib/types";
 
 export interface SeasonEpisode {
@@ -12,34 +13,14 @@ export interface SeasonEpisode {
   absoluteNumber: number | null;
   name: string | null;
   airLabel: string | null;
+  overview: string | null;
   // Anime-only, from animefillerlist.com — absent for TV or unmatched shows.
-  fillerType?: "canon" | "filler" | "mixed";
+  fillerType?: FillerType;
 }
 
 export interface SeasonGroup {
   seasonNumber: number;
   episodes: SeasonEpisode[];
-}
-
-// Bold-styled tag classes per filler type — small, hard-bordered, fits
-// inline next to the episode label on a phone-width row.
-const FILLER_TAG_CLASS: Record<
-  NonNullable<SeasonEpisode["fillerType"]>,
-  string
-> = {
-  canon: "bg-acid text-ink",
-  filler: "bg-[#ff5c39] text-ink",
-  mixed: "bg-panel text-ink-soft",
-};
-
-function FillerTag({ type }: { type: NonNullable<SeasonEpisode["fillerType"]> }) {
-  return (
-    <span
-      className={`shrink-0 border-2 border-ink px-1 py-0.5 text-[8px] font-bold uppercase leading-none ${FILLER_TAG_CLASS[type]}`}
-    >
-      {type}
-    </span>
-  );
 }
 
 // Owns the one source of truth for "which episodes are watched" across the
@@ -67,6 +48,9 @@ export default function EpisodeSection({
   const [pendingEpisodeIds, setPendingEpisodeIds] = useState<Set<string>>(
     () => new Set(),
   );
+  // Only one episode's overview panel is open at a time — clicking the open
+  // row's text block closes it, clicking another row's swaps to that one.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const defaultSeason = useMemo(() => {
     const firstUnfinished = seasons.find((s) =>
@@ -210,25 +194,52 @@ export default function EpisodeSection({
           const epLabel = isAnime
             ? `E${ep.absoluteNumber ?? ep.episodeNumber}`
             : `E${ep.episodeNumber}`;
+          const isExpanded = expandedId === ep.id;
           return (
-            <li key={ep.id} className="flex items-center gap-3 px-3 py-2">
-              <EpisodeTick
-                watched={watched.has(ep.id)}
-                pending={pendingEpisodeIds.has(ep.id)}
-                onToggle={() => toggleEpisode(ep.id)}
-              />
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold uppercase tracking-wide">
-                    {epLabel}
-                    {ep.name ? ` · ${ep.name}` : ""}
-                  </p>
-                  {ep.airLabel && (
-                    <p className="text-[10px] text-ink-soft">{ep.airLabel}</p>
-                  )}
-                </div>
-                {ep.fillerType && <FillerTag type={ep.fillerType} />}
+            <li key={ep.id} className="px-3 py-2">
+              <div className="flex items-center gap-3">
+                <EpisodeTick
+                  watched={watched.has(ep.id)}
+                  pending={pendingEpisodeIds.has(ep.id)}
+                  onToggle={() => toggleEpisode(ep.id)}
+                />
+                <button
+                  type="button"
+                  aria-expanded={isExpanded}
+                  onClick={() =>
+                    setExpandedId((prev) => (prev === ep.id ? null : ep.id))
+                  }
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold uppercase tracking-wide">
+                      {epLabel}
+                      {ep.name ? ` · ${ep.name}` : ""}
+                    </p>
+                    {ep.airLabel && (
+                      <p className="text-[10px] text-ink-soft">{ep.airLabel}</p>
+                    )}
+                  </div>
+                  {ep.fillerType && <FillerTag type={ep.fillerType} />}
+                  <span
+                    aria-hidden="true"
+                    className={`shrink-0 text-ink-soft transition-transform ${
+                      isExpanded ? "rotate-180" : ""
+                    }`}
+                  >
+                    ▾
+                  </span>
+                </button>
               </div>
+              {isExpanded && (
+                <div className="mt-2 border-t-[3px] border-ink pt-2">
+                  <p className="text-xs leading-relaxed text-ink-soft">
+                    {ep.overview && ep.overview.trim().length > 0
+                      ? ep.overview
+                      : "No description available."}
+                  </p>
+                </div>
+              )}
             </li>
           );
         })}

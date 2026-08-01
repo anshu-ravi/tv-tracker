@@ -3,9 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getAnimeCredits } from "@/lib/anilist";
 import { getTvCredits } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
+import { getAnimeRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
-import type { DataSource, MediaType, TitleCredits, WatchStatus } from "@/lib/types";
+import RatingBadges from "@/components/RatingBadges";
+import type { DataSource, MediaType, TitleCredits, TitleRatings, WatchStatus } from "@/lib/types";
 
 // --- Row shapes for the untyped Supabase client -----------------------------
 // Mirrors the pattern in the Home/BucketedGridPage server components: no
@@ -35,6 +37,7 @@ interface EpisodeRow {
   absolute_number: number | null;
   name: string | null;
   air_date: string | null;
+  overview: string | null;
 }
 
 const STATUS_LABEL: Record<WatchStatus, string> = {
@@ -83,7 +86,7 @@ export default async function TitleDetailPage({
         .maybeSingle(),
       supabase
         .from("episodes")
-        .select("id, season_number, episode_number, absolute_number, name, air_date")
+        .select("id, season_number, episode_number, absolute_number, name, air_date, overview")
         .eq("title_id", titleId)
         .order("season_number", { ascending: true })
         .order("episode_number", { ascending: true }),
@@ -110,6 +113,18 @@ export default async function TitleDetailPage({
     console.error("Failed to fetch credits:", err);
   }
 
+  // Ratings (IMDb/RT via OMDb for TV, AniList average score for anime) are
+  // also fetched live and never stored — same fallback pattern as credits.
+  let ratings: TitleRatings = { imdb: null, rottenTomatoes: null, anilistScore: null };
+  try {
+    ratings =
+      title.source === "tmdb"
+        ? await getTvRatings(title.source_id)
+        : await getAnimeRatings(title.source_id);
+  } catch (err) {
+    console.error("Failed to fetch ratings:", err);
+  }
+
   // Anime-only: episode names + canon/filler/mixed tags from
   // animefillerlist.com, keyed by episode number there (which lines up with
   // our absolute_number). getAnimeFillerData already swallows its own
@@ -134,6 +149,7 @@ export default async function TitleDetailPage({
           name: e.name || filler?.name || null,
           airLabel: formatDate(e.air_date),
           fillerType: filler?.type,
+          overview: e.overview,
         };
       }),
   }));
@@ -183,6 +199,7 @@ export default async function TitleDetailPage({
               .join(" · ")}
           </p>
           {status && <span className="stamp w-fit text-[10px]">{STATUS_LABEL[status]}</span>}
+          <RatingBadges ratings={ratings} />
           {nextAirLabel && (
             <p className="text-xs text-ink-soft">
               Next: {title.next_episode_label ?? "Episode"} · {nextAirLabel}

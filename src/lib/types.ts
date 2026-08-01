@@ -43,6 +43,16 @@ export interface TitleCredits {
   cast: { name: string; role?: string | null; imageUrl?: string | null }[];
 }
 
+// Live-fetched ratings for the title detail screen (not stored in the DB —
+// see lib/ratings.ts). imdb is a 0-10 decimal, rottenTomatoes an integer
+// percent, anilistScore an integer 0-100; any of them may be null when the
+// source has no rating or the lookup fails.
+export interface TitleRatings {
+  imdb: number | null;
+  rottenTomatoes: number | null;
+  anilistScore: number | null;
+}
+
 export interface SearchResult {
   source: DataSource;
   sourceId: string;
