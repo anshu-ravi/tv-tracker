@@ -13,9 +13,7 @@ add a title to a bucket, browse buckets, open a title's detail screen, and mark
 episodes (per-episode or a whole season) watched. Everything below is merged to
 `main`.
 
-> ⚠️ `main` is **NOT pushed** — it's ~50+ commits ahead of `origin/main`. The user
-> pushes manually. Local `main` has the full history; push when you want the
-> remote in sync.
+`main` is pushed and in sync with `origin/main` (the user pushes manually).
 
 ### What's on `main`
 
@@ -37,8 +35,16 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
   fetch details → upsert `titles`+`episodes` → upsert `user_titles`),
   `DELETE /api/titles/:id` (remove from library), `PATCH /api/titles/:id/status`,
   `POST`/`DELETE /api/episodes/:id/watch`, `POST`/`DELETE
-  /api/titles/:id/season/:n/watch` (bulk season). Shared `requireUser()` guard
-  (`src/lib/api/auth.ts`); all 401 without a session.
+  /api/titles/:id/season/:n/watch` (bulk season), plus **lists/favorites**:
+  `GET`/`POST /api/lists`, `PATCH`/`DELETE /api/lists/:id`,
+  `POST /api/lists/:id/titles`, `DELETE /api/lists/:id/titles/:titleId`,
+  `POST`/`DELETE /api/favorites`. The list/favorite/add routes accept **either** a
+  catalog `titleId` **or** a provider triple `{source,sourceId,mediaType}` (via the
+  shared `ensureCatalogTitle` helper), so titles can be added from the preview page
+  before they're tracked. Marking a title **completed** now marks every episode
+  watched, and leaving completed unmarks them (`src/lib/api/watched.ts`, wired into
+  the status + add routes). Shared `requireUser()` guard (`src/lib/api/auth.ts`);
+  all 401 without a session.
 - **Screens** (`src/app/(app)/`, bottom-tab shell) —
   - **Home** (`HomeTabs`): two client subtabs — **Currently Watching** and
     **Upcoming**. Watching cards keep the mark-watched micro-interaction (round acid
@@ -55,9 +61,19 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
     (`SearchClient` — 350ms debounce, 2-char min, AbortController cancellation; no more
     Go button), add-to-bucket. Poster tiles have an inline **status dropdown + ✕
     remove** (`TitleActions`) and link to the detail screen.
+  - **Preview** (`/preview/[source]/[sourceId]`): a **read-only detail view built
+    live from the provider** (no DB write) so a show can be inspected before adding.
+    Search-result posters link here until the title is actually tracked (then they
+    link to `/title/:id`). Reuses the detail layout + the shared action bar; episodes
+    render read-only (`PreviewEpisodeList`).
+  - **Lists** (`/lists`, 6th bottom-tab): favorites-first collections with poster
+    thumbnails + inline create; `/lists/[listId]` is a poster grid with per-title
+    remove and list rename/delete (guarded for the reserved Favorites list).
   - **Detail** (`/title/[titleId]`): backdrop/poster/overview, **creator + cast**
     (live from TMDB/AniList), **IMDb / Rotten Tomatoes / AniList rating chips**
-    (`RatingBadges`, live from `ratings.ts`), **Back** button, and an episode list
+    (`RatingBadges`, live from `ratings.ts`), a **`TitleActionBar`** — three icon
+    controls (status menu / add-to-list popover / favorite heart), shared with the
+    preview page — **Back** button, and an episode list
     with a **season dropdown**, per-episode ticks, **mark/unmark whole season** (ticks
     update instantly), a **scroll box** for long seasons, **click-to-expand episode
     descriptions**, and — for anime — **episode names + CANON/FILLER/MIXED tags** from
@@ -65,8 +81,9 @@ episodes (per-episode or a whole season) watched. Everything below is merged to
 - **Mobile framing** — whole app clamped to a centered `max-w-md` phone-width column
   with full-height `border-x` (looks the same on desktop as on a phone); grids fixed
   at 3 columns.
-- **Tests** — Vitest, **53 tests** (`npm test`): provider normalization, all API-route
-  handlers, and the animefillerlist parser.
+- **Tests** — Vitest, **81 tests** (`npm test`): provider normalization, all API-route
+  handlers (incl. lists/favorites + completed-episode sync), and the animefillerlist
+  parser.
 
 ### 🟡 Authored but NOT deployed — nightly air-date cron
 Files under `supabase/`: `functions/refresh-air-dates/index.ts` (Deno), a pg_cron
@@ -81,11 +98,7 @@ is excluded from the app's tsc/eslint (Deno runtime).
    or the Vault variant), enable `pg_cron`/`pg_net`, apply the migration, run the
    Supabase advisors, and verify the Edge Function's inferred column names against
    the live schema first. Needs owner approval (live side-effects).
-2. **Data cleanup** — **Bleach** now shows anime filler tags on Home, so it appears
-   reclassified as anime (`source=anilist`); double-check **Code Geass** (may still be
-   stored as **TV** `source=tmdb` from an early add — remove ✕ and re-add via Search,
-   which prefers AniList, to get filler tags). **Naruto** is a Watchlist anime demo.
-3. **Polish backlog (optional)** — the app uses plain `<img>` (7 eslint LCP
+2. **Polish backlog (optional)** — the app uses plain `<img>` (7 eslint LCP
    *warnings*, no errors); could move to `next/image` with configured domains.
    Movies are still deferred (schema reserves room).
 
@@ -120,7 +133,9 @@ absent). AniList + animefillerlist need no key. Supabase project ref: `ermhfiofi
   (Postgres 17); Vercel target. Backend = Supabase + thin Next.js route handlers,
   **no separate server**. Future data/ML can run in Python against the same Postgres.
 - **Data model:** `titles`/`episodes` (shared catalog) + `user_titles`/
-  `watched_episodes` (per-user, RLS). Full detail in CLAUDE.md.
+  `watched_episodes` (per-user, RLS) + `lists`/`list_titles` (per-user custom
+  collections; `lists.is_favorites` flags the one reserved Favorites list,
+  lazily created on first favorite). Full detail in CLAUDE.md.
 - **Working agreements (see CLAUDE.md):** every feature ships on a `feat/*` branch
   merged to `main`; **all implementation is done by Sonnet 5 subagents** (Claude
   plans/reviews/runs the build/drives git); **never add Claude attribution** to

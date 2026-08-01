@@ -53,6 +53,17 @@ export interface TitleRatings {
   anilistScore: number | null;
 }
 
+// A user-created list (or the single implicit Favorites list) for the lists
+// UI. `contains` is only populated when the request scoped the lookup to a
+// specific titleId (see GET /api/lists?titleId=...).
+export interface ListSummary {
+  id: string;
+  name: string;
+  isFavorites: boolean;
+  titleCount: number;
+  contains?: boolean; // present only when a titleId was supplied
+}
+
 export interface SearchResult {
   source: DataSource;
   sourceId: string;

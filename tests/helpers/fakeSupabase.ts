@@ -89,8 +89,14 @@ export interface FakeUser {
 export interface FakeSupabaseOptions {
   user?: FakeUser | null;
   authError?: unknown;
-  /** Result returned for each `.from(table)` call, keyed by table name. */
-  tableResults?: Record<string, TableResult>;
+  /**
+   * Result returned for each `.from(table)` call, keyed by table name.
+   * A single `TableResult` is reused for every call to that table. Pass an
+   * array to hand back different results for successive calls to the same
+   * table within one request (e.g. a lookup select followed by an insert);
+   * once the array is exhausted, its last entry is reused.
+   */
+  tableResults?: Record<string, TableResult | TableResult[]>;
 }
 
 export interface FakeSupabaseClient {
@@ -108,7 +114,14 @@ export function createFakeSupabase(
   const builders: Record<string, FakeQueryBuilder[]> = {};
 
   const from = vi.fn((table: string) => {
-    const result = options.tableResults?.[table] ?? DEFAULT_RESULT;
+    const configured = options.tableResults?.[table];
+    let result: TableResult;
+    if (Array.isArray(configured)) {
+      const callIndex = builders[table]?.length ?? 0;
+      result = configured[Math.min(callIndex, configured.length - 1)];
+    } else {
+      result = configured ?? DEFAULT_RESULT;
+    }
     const builder = new FakeQueryBuilder(result);
     (builders[table] ??= []).push(builder);
     return builder;

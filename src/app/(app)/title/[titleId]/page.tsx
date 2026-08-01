@@ -7,6 +7,7 @@ import { getAnimeRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import RatingBadges from "@/components/RatingBadges";
+import TitleActionBar from "@/components/TitleActionBar";
 import type { DataSource, MediaType, TitleCredits, TitleRatings, WatchStatus } from "@/lib/types";
 
 // --- Row shapes for the untyped Supabase client -----------------------------
@@ -39,13 +40,6 @@ interface EpisodeRow {
   air_date: string | null;
   overview: string | null;
 }
-
-const STATUS_LABEL: Record<WatchStatus, string> = {
-  watchlist: "Watchlist",
-  watching: "Watching",
-  completed: "Completed",
-  dnf: "DNF",
-};
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -95,6 +89,8 @@ export default async function TitleDetailPage({
     ]);
 
   const status = (userTitleData as { status: WatchStatus } | null)?.status ?? null;
+  // ↑ null is only possible for a title that lost its user_titles row
+  // mid-visit; TitleActionBar treats a missing status as "not yet tracked".
   const episodes = (episodesData ?? []) as EpisodeRow[];
   const watchedIds = new Set(
     ((watchedData ?? []) as { episode_id: string }[]).map((w) => w.episode_id),
@@ -198,7 +194,13 @@ export default async function TitleDetailPage({
               .filter(Boolean)
               .join(" · ")}
           </p>
-          {status && <span className="stamp w-fit text-[10px]">{STATUS_LABEL[status]}</span>}
+          <TitleActionBar
+            source={title.source}
+            sourceId={title.source_id}
+            mediaType={title.media_type}
+            titleId={title.id}
+            initialStatus={status ?? undefined}
+          />
           <RatingBadges ratings={ratings} />
           {nextAirLabel && (
             <p className="text-xs text-ink-soft">

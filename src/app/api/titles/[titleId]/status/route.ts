@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/auth";
+import { markTitleWatched, unmarkTitleWatched } from "@/lib/api/watched";
 import type { WatchStatus } from "@/lib/types";
 
 const WATCH_STATUSES: WatchStatus[] = [
@@ -42,6 +43,25 @@ export async function PATCH(
     );
   }
 
+  // Look up the current status first so we know whether this change is
+  // entering or leaving "completed" (drives the watched_episodes sync below).
+  const { data: current, error: currentError } = await supabase
+    .from("user_titles")
+    .select("status")
+    .eq("title_id", titleId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (currentError) {
+    console.error("Failed to look up current status:", currentError);
+    return NextResponse.json(
+      { error: "Failed to update status" },
+      { status: 500 },
+    );
+  }
+
+  const previousStatus = current?.status as WatchStatus | undefined;
+
   const { data, error } = await supabase
     .from("user_titles")
     .update({ status })
@@ -63,6 +83,21 @@ export async function PATCH(
       { error: "Title is not in your list" },
       { status: 404 },
     );
+  }
+
+  // Keep watched_episodes in sync with the "completed" bucket. Best-effort:
+  // the status change above already succeeded, so a sync failure here is
+  // logged and swallowed rather than failing the request.
+  if (status === "completed") {
+    const { error: syncError } = await markTitleWatched(supabase, titleId);
+    if (syncError) {
+      console.error("Failed to mark episodes watched on completion:", syncError);
+    }
+  } else if (previousStatus === "completed") {
+    const { error: syncError } = await unmarkTitleWatched(supabase, titleId);
+    if (syncError) {
+      console.error("Failed to unmark episodes on leaving completed:", syncError);
+    }
   }
 
   return NextResponse.json({ userTitle: data });

@@ -186,6 +186,39 @@ describe("POST /api/titles", () => {
     expect(mockGetTvTitle).not.toHaveBeenCalled();
   });
 
+  it("marks all episodes watched when added directly as completed", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        titles: { data: { id: "title-1" }, error: null },
+        user_titles: {
+          data: { title_id: "title-1", status: "completed" },
+          error: null,
+        },
+        episodes: { data: [{ id: "ep-1" }, { id: "ep-2" }], error: null },
+        watched_episodes: { data: null, error: null },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
+    const response = await callPost({
+      source: "tmdb",
+      sourceId: "42",
+      mediaType: "tv",
+      status: "completed",
+    });
+
+    expect(response.status).toBe(201);
+
+    const watchedUpsert = fake.builders.watched_episodes[0].calls.find(
+      (c) => c.method === "upsert",
+    );
+    expect(watchedUpsert?.args[0]).toEqual([
+      { episode_id: "ep-1", title_id: "title-1" },
+      { episode_id: "ep-2", title_id: "title-1" },
+    ]);
+  });
+
   it("returns 500 when the titles upsert fails", async () => {
     const fake = createFakeSupabase({
       user: { id: "user-1" },

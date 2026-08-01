@@ -13,11 +13,11 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
 
 // One search result tile with an inline add-to-bucket control. Status
 // defaults to "watchlist" per the spec; once added, the control collapses
-// into a stamp showing which bucket it landed in. A search result only has
-// a catalog `titles.id` (needed for the detail route) once it's actually in
-// the library — either already, via `existingTitleId`, or freshly added,
-// via the POST response — so the poster only links to /title/:id then;
-// otherwise it stays a plain (non-navigating) tile.
+// into a stamp showing which bucket it landed in. The poster is always
+// tappable: once a title is in the library (already, via `existingTitleId`,
+// or freshly added, via the POST response) it links to the real /title/:id
+// page; until then it links to the live, read-only /preview/:source/:id
+// route so a not-yet-added show is still browsable.
 export default function SearchResultCard({
   result,
   existingStatus,
@@ -80,19 +80,17 @@ export default function SearchResultCard({
     </div>
   );
 
+  const posterHref = savedTitleId
+    ? `/title/${savedTitleId}`
+    : `/preview/${result.source}/${result.sourceId}`;
+
   return (
     <div className="card-bold overflow-hidden p-0">
-      {savedTitleId ? (
-        <Link href={`/title/${savedTitleId}`}>
-          <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
-            {poster}
-          </div>
-        </Link>
-      ) : (
+      <Link href={posterHref}>
         <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
           {poster}
         </div>
-      )}
+      </Link>
 
       <div className="p-1.5">
         <p className="truncate text-[10px] font-bold uppercase tracking-wide">
