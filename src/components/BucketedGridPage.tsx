@@ -66,7 +66,7 @@ export default async function BucketedGridPage({
 
   return (
     <div className="pb-6">
-      <h1 className="display px-4 pt-6 text-3xl">{heading}</h1>
+      <h1 className="display px-4 pt-4 text-2xl">{heading}</h1>
       {BUCKET_ORDER.map((bucket) => (
         <BucketSection
           key={bucket.status}

@@ -58,8 +58,8 @@ export default async function ListsPage() {
   });
 
   return (
-    <div className="px-4 py-6 pb-6">
-      <h1 className="display mb-4 text-3xl">Lists</h1>
+    <div className="px-4 pt-4 pb-6">
+      <h1 className="display mb-4 text-2xl">Lists</h1>
       <CreateListForm />
 
       {sortedLists.length === 0 ? (
