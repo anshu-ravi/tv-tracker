@@ -161,14 +161,14 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
       setPopCount((n) => n + 1);
       setToast({ message: "Marked watched", withUndo: true });
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(dismissToast, 4000);
+      toastTimer.current = setTimeout(dismissToast, 2500);
 
-      // Give the user a 4s Undo window before pulling fresh server state
+      // Give the user a 2.5s Undo window before pulling fresh server state
       // (which will hand back the next unwatched episode, if any).
       refreshTimer.current = setTimeout(() => {
         setToast(null);
         router.refresh();
-      }, 4000);
+      }, 2500);
     } catch {
       // Leave the button enabled so the user can just try again.
     } finally {
