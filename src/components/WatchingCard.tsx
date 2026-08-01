@@ -16,21 +16,17 @@ export interface WatchingCardData {
   posterUrl: string | null;
   watchedCount: number;
   totalCount: number;
-  nextEpisodeAirDate: string | null;
-  nextEpisodeLabel: string | null;
   // The earliest aired-but-unwatched episode's id, or null when there isn't
   // one — i.e. the finale-guard case ("All caught up").
   nextUnwatchedEpisodeId: string | null;
+  // Code + name for that same next-unwatched episode, e.g. "E5" / "Rescue
+  // Rukia" (anime) or "S3E7" / "The Reunion" (TV). Null when there's no next
+  // episode (caught up) or the episode has no name.
+  nextEpisodeCode: string | null;
+  nextEpisodeName: string | null;
   // Anime-only canon/filler/mixed tag for the next-up episode, from
   // animefillerlist.com — absent for TV or when there's no next episode/match.
   nextEpisodeFillerType?: FillerType;
-}
-
-function formatAirDate(iso: string | null): string | null {
-  if (!iso) return null;
-  const date = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // Round check-circle mark button, matching the Bold prototype: 52px circle,
@@ -144,7 +140,6 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
   const realCaughtUp = !data.nextUnwatchedEpisodeId;
   const caughtUp = realCaughtUp || justMarked;
   const displayedCount = data.watchedCount + (justMarked ? 1 : 0);
-  const airDateLabel = formatAirDate(data.nextEpisodeAirDate);
 
   function dismissToast() {
     setToast(null);
@@ -228,14 +223,17 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
           <h3 className="display truncate text-lg">{data.title}</h3>
         </Link>
         <ProgressBar watched={displayedCount} total={data.totalCount} />
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
-          <span>
-            {airDateLabel
-              ? `Next: ${data.nextEpisodeLabel ?? "Episode"} · ${airDateLabel}`
-              : "No upcoming episode scheduled"}
-          </span>
-          {!caughtUp && data.nextEpisodeFillerType && (
-            <FillerTag type={data.nextEpisodeFillerType} />
+        <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-soft">
+          {caughtUp ? (
+            <span>All caught up</span>
+          ) : (
+            <>
+              <span className="min-w-0 truncate">
+                Up next · {data.nextEpisodeCode}
+                {data.nextEpisodeName ? ` · ${data.nextEpisodeName}` : ""}
+              </span>
+              {data.nextEpisodeFillerType && <FillerTag type={data.nextEpisodeFillerType} />}
+            </>
           )}
         </p>
       </div>
