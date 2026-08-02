@@ -86,8 +86,11 @@
    `base`, so a layered rule here would lose the cascade to utilities like
    `text-sm`. Unlayered CSS beats all layered CSS regardless of source order. */
 @media (hover: none) and (pointer: coarse) {
+  /* select is deliberately excluded: iOS opens a native picker wheel for
+     <select> on focus and does not zoom the viewport, so it never needed
+     the 16px minimum. Forcing it here overflowed the small text-[10px]
+     status dropdowns in the poster-grid cards. */
   input,
-  select,
   textarea {
     font-size: 16px;
   }
