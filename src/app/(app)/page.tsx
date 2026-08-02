@@ -37,6 +37,7 @@ interface EpisodeRow {
 interface WatchedEpisodeRow {
   episode_id: string;
   title_id: string;
+  watched_at: string;
 }
 
 // Upcoming tab's title shape — a superset of TitleRow's fields plus
@@ -69,16 +70,38 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((utcMidnight(toIso) - utcMidnight(fromIso)) / 86_400_000);
 }
 
-// Currently Watching is split into two sub-sections: a show whose next
-// unwatched episode aired recently is "up next" (business as usual); one
-// whose next unwatched episode aired a while ago has been neglected and
-// moves into the "catch up" carousel instead, so a month-old backlog doesn't
-// visually blend in with shows the user is actively keeping pace with.
+// Currently Watching is split into two sub-sections: a show the owner has
+// marked an episode of recently is "up next" (business as usual); one they
+// haven't touched in a while has been neglected and moves into the "catch
+// up" carousel instead, so a stale show doesn't visually blend in with ones
+// the owner is actively keeping pace with. This is based on the owner's own
+// watch activity (last watched_at for the title), not episode air dates —
+// an old unwatched episode shouldn't permanently strand a show in "catch up"
+// if the owner marked something else on it yesterday.
 const CATCHUP_THRESHOLD_DAYS = 30;
+
+// Pure bucketing decision, factored out for unit testing. `lastWatchedAtIso`
+// is the owner's most recent watched_at for the title (any timestamp format
+// `daysBetween` can consume the date portion of), or null if they've never
+// marked an episode of it. A title with no watch history yet is never
+// "behind" — it's brand new, not neglected.
+export function classifyBucket(
+  lastWatchedAtIso: string | null,
+  todayIso: string,
+): "upnext" | "catchup" {
+  if (!lastWatchedAtIso) return "upnext";
+  const daysSinceLastWatch = daysBetween(lastWatchedAtIso.slice(0, 10), todayIso);
+  return daysSinceLastWatch > CATCHUP_THRESHOLD_DAYS ? "catchup" : "upnext";
+}
 
 export default async function HomePage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const displayName: string = user?.user_metadata?.display_name ?? "";
 
   // RLS already scopes these to the signed-in user, so no explicit user_id
   // filter is needed — just the bucket(s).
@@ -132,7 +155,7 @@ export default async function HomePage() {
 
   // ---- Currently Watching dataset --------------------------------------------
   if (watchingTitles.length === 0) {
-    return <HomeTabs watching={[]} upcoming={upcoming} />;
+    return <HomeTabs watching={[]} upcoming={upcoming} displayName={displayName} />;
   }
 
   const titleIds = watchingTitles.map((ut) => ut.title_id);
@@ -148,13 +171,24 @@ export default async function HomePage() {
       .order("episode_number", { ascending: true }),
     supabase
       .from("watched_episodes")
-      .select("episode_id, title_id")
+      .select("episode_id, title_id, watched_at")
       .in("title_id", titleIds),
   ]);
 
   const episodes = (episodesData ?? []) as unknown as EpisodeRow[];
   const watched = (watchedData ?? []) as unknown as WatchedEpisodeRow[];
   const watchedIds = new Set(watched.map((w) => w.episode_id));
+
+  // Most recent watched_at per title, used to bucket Currently Watching into
+  // "up next" vs "catch up" by the owner's own activity (see
+  // classifyBucket/CATCHUP_THRESHOLD_DAYS above).
+  const lastWatchByTitleId = new Map<string, string>();
+  for (const w of watched) {
+    const current = lastWatchByTitleId.get(w.title_id);
+    if (!current || w.watched_at > current) {
+      lastWatchByTitleId.set(w.title_id, w.watched_at);
+    }
+  }
 
   // Anime-only: canon/filler/mixed tags for the next-up episode, from
   // animefillerlist.com. getAnimeFillerData already swallows its own
@@ -230,13 +264,12 @@ export default async function HomePage() {
     ).length;
     const seasonTotalCount: number | null = seasonEpisodes.length;
 
-    // Days since the next-unwatched episode aired (0 or negative for an
-    // episode with no air_date, since that's treated as available now).
-    // Past the threshold, this show has been neglected long enough to move
-    // out of "Up Next" and into the "Catch Up" carousel.
-    const daysSinceAired = nextEpisode.air_date ? daysBetween(nextEpisode.air_date, today) : 0;
-    const bucket: WatchingCardData["bucket"] =
-      daysSinceAired > CATCHUP_THRESHOLD_DAYS ? "catchup" : "upnext";
+    // Days since the owner last marked ANY episode of this title watched
+    // (null if never). Past the threshold, this show has been neglected
+    // long enough to move out of "Up Next" and into the "Catch Up"
+    // carousel — regardless of when the next unwatched episode itself aired.
+    const lastWatchedAt = lastWatchByTitleId.get(ut.title_id) ?? null;
+    const bucket: WatchingCardData["bucket"] = classifyBucket(lastWatchedAt, today);
 
     return {
       titleId: ut.title_id,
@@ -258,5 +291,5 @@ export default async function HomePage() {
     })
     .filter((card): card is WatchingCardData => card !== null);
 
-  return <HomeTabs watching={cards} upcoming={upcoming} />;
+  return <HomeTabs watching={cards} upcoming={upcoming} displayName={displayName} />;
 }

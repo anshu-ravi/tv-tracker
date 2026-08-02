@@ -1,16 +1,27 @@
 #!/usr/bin/env -S npx tsx
-// Refresh catalog data for every title TARGET_USER_ID is tracking as
-// "watching" or "watchlist" — a one-off maintenance run for the live DB.
+// Refresh catalog data for every title TARGET_USER_ID is tracking, regardless
+// of status (watching/watchlist/completed/dnf) — a one-off maintenance run
+// for the live DB. Completed titles are included because a "completed" show
+// can resume airing, and titles.is_running needs to stay current for those
+// too, not just for actively-watched/watchlisted titles.
 //
 // Why this exists: the one-time Trakt import (scripts/trakt-import/) only
 // wrote episode rows the user had actually watched, not the full episode
 // list. So shows with an unwatched season (or one the user hasn't gotten to
 // yet) are missing rows entirely — e.g. "Devil May Cry" shows
 // total_episodes=16 but only has 8 episode rows because season 2 was never
-// written. This script re-fetches every such title from its provider
-// (TMDB/AniList) and re-upserts titles + episodes, same as the in-app
-// "Refresh data" button / POST /api/titles/refresh, just without going
-// through the UI.
+// written. This script re-fetches every such title from its provider and
+// re-upserts titles + episodes, same as the in-app "Refresh data" button /
+// POST /api/titles/refresh, just without going through the UI.
+//
+// Both tv and anime titles are TMDB-sourced (anime migrated off AniList —
+// see src/lib/api/catalog.ts's refreshCatalogTitle, which this mirrors).
+// Anime is fetched via the same TMDB /tv endpoint as tv, just with
+// mediaType: "anime" so absolute_number keeps getting (re)computed for
+// filler-tag lookups (src/lib/animefillerlist.ts) — media_type itself is
+// never rewritten to "tv". A lingering anilist-sourced row (none exist as of
+// this writing) would fall through to the "unsupported source/mediaType"
+// skip below rather than crash the run.
 //
 //   npx tsx scripts/refresh-catalog/refresh.ts
 //
@@ -19,7 +30,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { loadEnv } from "./lib/env";
 import { getTvTitle } from "./lib/tmdb";
-import { getAnimeTitle } from "./lib/anilist";
 import { getEpisodeSynopsis, getEpisodeTitles } from "./lib/jikan";
 import { resolveAnimeTmdbMatch, applyTmdbAnimeMatch } from "./lib/tmdbAnimeMatch";
 
@@ -163,8 +173,7 @@ async function main() {
   const { data, error } = await supabase
     .from("user_titles")
     .select("title_id, titles(id, source, source_id, media_type, title)")
-    .eq("user_id", env.TARGET_USER_ID)
-    .in("status", ["watching", "watchlist"]);
+    .eq("user_id", env.TARGET_USER_ID);
 
   if (error) {
     console.error("Failed to load tracked titles:", error.message);
@@ -180,17 +189,20 @@ async function main() {
 
   let refreshed = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const t of titles) {
     try {
       let fetched;
       if (t.media_type === "tv" && t.source === "tmdb") {
         fetched = await getTvTitle(env.TMDB_API_KEY, t.source_id);
-      } else if (t.media_type === "anime" && t.source === "anilist") {
-        fetched = await getAnimeTitle(t.source_id);
+      } else if (t.media_type === "anime" && t.source === "tmdb") {
+        // Same TMDB path as tv, just with mediaType: "anime" so
+        // absolute_number keeps getting (re)computed for filler-tag lookups.
+        fetched = await getTvTitle(env.TMDB_API_KEY, t.source_id, { mediaType: "anime" });
       } else {
         console.log(`  SKIP  ${t.title} — unsupported source/mediaType`);
-        failed++;
+        skipped++;
         continue;
       }
 
@@ -265,6 +277,7 @@ async function main() {
 
   console.log(`\n=== Summary ===`);
   console.log(`Refreshed: ${refreshed}`);
+  console.log(`Skipped:   ${skipped}`);
   console.log(`Failed:    ${failed}`);
 }
 

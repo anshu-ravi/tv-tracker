@@ -3,17 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeSupabase } from "../helpers/fakeSupabase";
 import type { NormalizedEpisode, NormalizedTitle } from "@/lib/types";
 
-const { mockCreateClient, mockGetTvTitle, mockGetAnimeTitle } = vi.hoisted(
-  () => ({
-    mockCreateClient: vi.fn(),
-    mockGetTvTitle: vi.fn(),
-    mockGetAnimeTitle: vi.fn(),
-  }),
-);
+const { mockCreateClient, mockGetTvTitle } = vi.hoisted(() => ({
+  mockCreateClient: vi.fn(),
+  mockGetTvTitle: vi.fn(),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mockCreateClient }));
 vi.mock("@/lib/tmdb", () => ({ getTvTitle: mockGetTvTitle }));
-vi.mock("@/lib/anilist", () => ({ getAnimeTitle: mockGetAnimeTitle }));
 
 const normalizedTitle: NormalizedTitle = {
   source: "tmdb",
@@ -31,10 +27,6 @@ const normalizedEpisodes: NormalizedEpisode[] = [
 beforeEach(() => {
   mockGetTvTitle.mockResolvedValue({
     title: normalizedTitle,
-    episodes: normalizedEpisodes,
-  });
-  mockGetAnimeTitle.mockResolvedValue({
-    title: { ...normalizedTitle, source: "anilist", mediaType: "anime" },
     episodes: normalizedEpisodes,
   });
 });
@@ -161,7 +153,7 @@ describe("POST /api/titles", () => {
     });
   });
 
-  it("routes anime/anilist requests through getAnimeTitle", async () => {
+  it("routes anime/tmdb requests through getTvTitle with mediaType anime", async () => {
     const fake = createFakeSupabase({
       user: { id: "user-1" },
       tableResults: {
@@ -175,15 +167,14 @@ describe("POST /api/titles", () => {
     mockCreateClient.mockResolvedValue(fake);
 
     const response = await callPost({
-      source: "anilist",
+      source: "tmdb",
       sourceId: "202",
       mediaType: "anime",
       status: "watchlist",
     });
 
     expect(response.status).toBe(201);
-    expect(mockGetAnimeTitle).toHaveBeenCalledWith("202");
-    expect(mockGetTvTitle).not.toHaveBeenCalled();
+    expect(mockGetTvTitle).toHaveBeenCalledWith("202", { mediaType: "anime" });
   });
 
   it("marks all episodes watched when added directly as completed", async () => {

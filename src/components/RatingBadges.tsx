@@ -2,8 +2,8 @@ import type { TitleRatings } from "@/lib/types";
 
 // Small hard-bordered rating chips for the title detail screen. Server-safe
 // (no client state) — plain presentational rendering of already-fetched
-// TitleRatings. Renders nothing when every value is null (e.g. no OMDb key,
-// no IMDb match, or AniList has no score yet).
+// TitleRatings. Renders nothing when every value is null (e.g. no OMDb key
+// or no IMDb match).
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
@@ -14,8 +14,8 @@ function Badge({ children }: { children: React.ReactNode }) {
 }
 
 export default function RatingBadges({ ratings }: { ratings: TitleRatings }) {
-  const { imdb, rottenTomatoes, anilistScore } = ratings;
-  if (imdb === null && rottenTomatoes === null && anilistScore === null) return null;
+  const { imdb, rottenTomatoes } = ratings;
+  if (imdb === null && rottenTomatoes === null) return null;
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -28,11 +28,6 @@ export default function RatingBadges({ ratings }: { ratings: TitleRatings }) {
       {rottenTomatoes !== null && (
         <Badge>
           <span>🍅 {rottenTomatoes}%</span>
-        </Badge>
-      )}
-      {anilistScore !== null && (
-        <Badge>
-          <span>★ {anilistScore}</span>
         </Badge>
       )}
     </div>

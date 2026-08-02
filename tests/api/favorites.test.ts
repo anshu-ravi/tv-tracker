@@ -6,7 +6,6 @@ const { mockCreateClient } = vi.hoisted(() => ({ mockCreateClient: vi.fn() }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mockCreateClient }));
 vi.mock("@/lib/tmdb", () => ({ getTvTitle: vi.fn() }));
-vi.mock("@/lib/anilist", () => ({ getAnimeTitle: vi.fn() }));
 
 afterEach(() => {
   vi.clearAllMocks();

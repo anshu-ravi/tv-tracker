@@ -15,6 +15,11 @@ export interface SeasonEpisode {
   overview: string | null;
   // Anime-only, from animefillerlist.com — absent for TV or unmatched shows.
   fillerType?: FillerType;
+  // True when the title's filler data was found but this specific episode
+  // has no classification there (upstream just hasn't tagged it yet) — lets
+  // the UI show a quiet "no data" mark instead of looking identical to a
+  // title with no filler source at all.
+  fillerUnclassified?: boolean;
 }
 
 export interface SeasonGroup {
@@ -218,7 +223,17 @@ export default function EpisodeSection({
                       <p className="text-[10px] text-ink-soft">{ep.airLabel}</p>
                     )}
                   </div>
-                  {ep.fillerType && <FillerTag type={ep.fillerType} />}
+                  {ep.fillerType ? (
+                    <FillerTag type={ep.fillerType} />
+                  ) : ep.fillerUnclassified ? (
+                    <span
+                      aria-label="No filler classification available"
+                      title="No filler classification available"
+                      className="shrink-0 px-1 text-[8px] font-bold uppercase leading-none text-ink-soft/40"
+                    >
+                      &mdash;
+                    </span>
+                  ) : null}
                   <span
                     aria-hidden="true"
                     className={`shrink-0 text-ink-soft transition-transform ${

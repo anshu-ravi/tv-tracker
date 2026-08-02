@@ -9,8 +9,11 @@ import { refreshCatalogTitle } from "@/lib/api/catalog";
 // (e.g. a season 2 the user hasn't started) are missing rows entirely.
 //
 // Body: { titleId } to refresh one title, or { scope: "tracked" } to refresh
-// every title the signed-in user has in user_titles with status "watching"
-// or "watchlist" (this is the maintenance sweep exposed on /account).
+// every title the signed-in user has in user_titles, regardless of status
+// (this is the maintenance sweep exposed on /account). Completed/dnf titles
+// are included deliberately: a "completed" show can resume airing, and the
+// Ended-vs-caught-up badge shown for completed titles depends on is_running
+// staying current, not just on watching/watchlist rows.
 interface RefreshBody {
   titleId?: string;
   scope?: "tracked";
@@ -22,8 +25,8 @@ interface UserTitleRow {
 
 // Small helper: run `items` through `worker` with at most `limit` in flight
 // at once. The batch refresh could easily be dozens of titles — running
-// them all at once would hammer TMDB/AniList, and running strictly
-// sequentially would be needlessly slow.
+// them all at once would hammer TMDB, and running strictly sequentially
+// would be needlessly slow.
 async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
@@ -69,14 +72,13 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Batch refresh of everything the signed-in user is tracking as
-  // "watching" or "watchlist" (completed/dnf shows are static enough not to
-  // need this sweep, and this keeps the batch smaller/faster).
+  // Batch refresh of everything the signed-in user is tracking, regardless
+  // of status — including "completed" and "dnf", since a completed show can
+  // resume airing and titles.is_running needs to stay current for those too.
   if (body.scope === "tracked") {
     const { data, error } = await supabase
       .from("user_titles")
-      .select("title_id")
-      .in("status", ["watching", "watchlist"]);
+      .select("title_id");
 
     if (error) {
       console.error("Failed to list tracked titles for refresh:", error);

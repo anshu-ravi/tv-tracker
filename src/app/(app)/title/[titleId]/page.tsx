@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAnimeCredits } from "@/lib/anilist";
 import { getTvCredits } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
-import { getAnimeRatings, getTvRatings } from "@/lib/ratings";
+import { getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import RatingBadges from "@/components/RatingBadges";
@@ -101,22 +100,16 @@ export default async function TitleDetailPage({
   // of the screen — fall back to empty lists.
   let credits: TitleCredits = { creators: [], cast: [] };
   try {
-    credits =
-      title.source === "tmdb"
-        ? await getTvCredits(title.source_id)
-        : await getAnimeCredits(title.source_id);
+    credits = await getTvCredits(title.source_id);
   } catch (err) {
     console.error("Failed to fetch credits:", err);
   }
 
-  // Ratings (IMDb/RT via OMDb for TV, AniList average score for anime) are
-  // also fetched live and never stored — same fallback pattern as credits.
-  let ratings: TitleRatings = { imdb: null, rottenTomatoes: null, anilistScore: null };
+  // Ratings (IMDb/RT via OMDb) are also fetched live and never stored — same
+  // fallback pattern as credits.
+  let ratings: TitleRatings = { imdb: null, rottenTomatoes: null };
   try {
-    ratings =
-      title.source === "tmdb"
-        ? await getTvRatings(title.source_id)
-        : await getAnimeRatings(title.source_id);
+    ratings = await getTvRatings(title.source_id);
   } catch (err) {
     console.error("Failed to fetch ratings:", err);
   }
@@ -145,6 +138,11 @@ export default async function TitleDetailPage({
           name: e.name || filler?.name || null,
           airLabel: formatDate(e.air_date),
           fillerType: filler?.type,
+          // fillerData is only non-null when animefillerlist had *some*
+          // classification for this title, so a miss here means "not yet
+          // tagged upstream", not "no source" — the detail list renders
+          // that distinctly (quiet dash) instead of nothing.
+          fillerUnclassified: fillerData != null && !filler,
           overview: e.overview,
         };
       }),

@@ -3,9 +3,9 @@
 Snapshot of where the build stands and where to continue. Pairs with
 `CLAUDE.md` (how to work here) and `context.md` (the why + full scope).
 
-_Updated 2026-08-01 (session 3: catalog refresh, Home up-next/catch-up split,
-season-scoped progress, ended-vs-caught-up, **anime migrated from AniList to
-TMDB**)._
+_Updated 2026-08-02 (session 4: catch-up re-defined by watch activity, filler
+arc mapping, avatar icon picker, stats percentages, greeting, refresh scope,
+AniList retired). Session 3 notes retained below._
 
 ## Where we are
 
@@ -14,8 +14,49 @@ history imported. `main` is pushed (build + lint green). You can log in, search,
 add titles, browse buckets, open a title, mark episodes, manage lists/favorites,
 edit your profile, and view stats.
 
-**Anime is now TMDB-sourced with real seasons** — the big change this session.
-See "Anime → TMDB migration" below.
+**Anime is TMDB-sourced with real seasons** (session 3). See "Anime → TMDB
+migration" below.
+
+### Session-4 changes (on `feat/session-4-fixes`, not yet merged)
+
+- **Catch Up now means "you haven't touched this in 30 days"**, not "the next
+  unwatched episode is old". The old air-date rule pinned Bleach in Catch Up
+  forever (its next unwatched episode aired in 2005) even when watched the day
+  before. `classifyBucket()` in `src/app/(app)/page.tsx` keys on the owner's
+  most recent `watched_episodes.watched_at`; a title with no marks yet is Up
+  Next, not "behind". The per-card "N months since" stamp was removed — it was
+  accurate but read as a backlog size (Sugar showed "4 MONTHS SINCE" because
+  the owner last watched it in April, which looked like 4 months of unwatched
+  episodes).
+- **Filler arc mapping** (`src/lib/animefillerlist.ts`) — `TITLE_SLUG_OVERRIDES`
+  lets one title draw from several animefillerlist pages with a numbering
+  offset, because the site splits franchises (Bleach 1–366 on `/shows/bleach`,
+  Thousand-Year Blood War on its own page numbered from 1). Bleach S2 went from
+  0 tags to 40. Unclassified episodes render a quiet dash so an upstream gap is
+  distinguishable from a bug.
+  - **Upstream limits, not our bugs:** TYBW is only published through its
+    episode 40 (our absolute 406), so 407–416 have no data; Fire Force S3 is
+    absent entirely; Dan Da Dan has 3 of 24 episodes classified.
+  - The `food-wars-fourth-plate` slug really does serve "Bleach OVAs" — the
+    site's own stale URL, not a scraping bug. Pinned by a regression test so
+    nobody "fixes" it.
+- **Avatar icon picker — built, then dropped.** A 26-icon bundled-SVG picker
+  replacing photo upload was implemented and reviewed, and the owner rejected
+  it on sight; the commit was dropped from the branch. **Photo upload is
+  unchanged and still live.** Don't rebuild this without a fresh brief — the
+  idea was tried and turned down, not left unfinished.
+- **Stats** — TV vs Anime is a percentage split (largest-remainder rounding, so
+  it always sums to 100); episode/hour counts dropped from the legend.
+- **Home greeting** — display-name eyebrow above the HOME wordmark.
+- **Refresh scope** — the tracked sweep covers *every* status. It previously
+  skipped `completed`, which is the only status that renders the
+  ended-vs-caught-up badge, so that badge was stale by construction (this is
+  why Solo Leveling read "Ended"). The standalone script separately still gated
+  anime on `source='anilist'` and skipped all 30 anime; it now takes the TMDB
+  path, and its local TMDB client gained `absoluteNumber` (without which a
+  refresh would strip the numbering filler lookups depend on).
+- **AniList/Jikan retired** — clients deleted, dead branches removed. The
+  `anilist` value stays in the `data_source` enum and `DataSource` type.
 
 ## What's on `main`
 
@@ -23,8 +64,8 @@ See "Anime → TMDB migration" below.
 - **Bold design system** (`src/app/globals.css`), root layout + fonts + PWA
   manifest/icons. Supabase wiring (`src/lib/supabase/*`) + `src/proxy.ts`.
 - **Auth** — email+password, single user. Confirm-email OFF. Google auth dropped.
-- **Data clients** (`src/lib/`) — `tmdb.ts`, `anilist.ts`, `animefillerlist.ts`,
-  `jikan.ts`, `ratings.ts`, `types.ts`.
+- **Data clients** (`src/lib/`) — `tmdb.ts`, `animefillerlist.ts`, `ratings.ts`,
+  `types.ts` (`anilist.ts`/`jikan.ts` retired — see resume list below).
 - **API routes** (`src/app/api/**`) — search, titles add/remove/status, episode +
   season watch, lists, favorites, account profile. Shared `requireUser()` guard.
 - **Navigation** — 4 icon tabs (Home · Library · Search · Account); Library is a
@@ -146,12 +187,22 @@ API — drop when comfortable):
 
 ## Resume list (open items)
 
-1. **Dan Da Dan is incomplete** — 12 episode rows locally, 24 on TMDB. Correctly
-   numbered, just missing rows; pre-existing, not caused by the migration. Run
-   the refresh sweep to fill it (and catch any other partial imports):
+1. ~~**Dan Da Dan is incomplete.**~~ Done — the owner ran the sweep; it now has
+   all 24 episode rows. Re-run it after the session-4 script fix to pick up the
+   30 anime that were being skipped:
    ```bash
    TARGET_USER_ID=0d6f5608-4025-47bd-9f69-18c6d5f762bb npx tsx scripts/refresh-catalog/refresh.ts
    ```
+   Solo Leveling's stale `is_running = false` clears on that run.
+1a. **The test suite has rotted and needs its own branch.** `npx vitest run` is
+   **8 failing / 77 passing**, and all 8 predate session 4 (verified by stashing
+   the branch and re-running against `main`). They are: 4 assertions in
+   `tests/api/search.test.ts` covering a TMDB+AniList search merge the route no
+   longer implements, 2 in `tests/api/titles*.test.ts` (`watched_at`, a stale
+   400-vs-500 expectation), and `tests/lib/tmdb.test.ts` `absoluteNumber`
+   snapshots left over from the session-3 migration. Until these are fixed the
+   suite cannot tell you whether a change broke something. Also: **CLAUDE.md
+   still says "no test runner configured yet"**, two sessions stale.
 2. **Deploy the nightly cron.** More valuable now that anime and TV share one
    refresh path — and worth **rescoping it to call `refreshCatalogTitle` for
    tracked titles** rather than its current narrow "only the season containing
@@ -160,9 +211,9 @@ API — drop when comfortable):
    `supabase secrets set TMDB_API_KEY=…` (Edge Function secrets are a separate
    store from `.env`), and the Vault-backed service-role key so it never lands in
    git. See that function's README.
-3. **Retire AniList.** `src/lib/anilist.ts` and `src/lib/jikan.ts` are now
-   effectively dead (0 titles on AniList). Left in place deliberately during the
-   transition — safe to remove once you're happy.
+3. ~~**Retire AniList.**~~ Done — `src/lib/anilist.ts` and `src/lib/jikan.ts`
+   deleted along with every live-code reference (the `anilist` `data_source`
+   enum value stays in Postgres; it's harmless and dropping it is destructive).
 4. **Drop the backup tables** listed above once the migration has proven itself.
 5. **Search "Explore"** (low priority) — TMDB trending/popular before the user types.
 6. **Polish** — plain `<img>` LCP warnings; movies still deferred.

@@ -62,7 +62,7 @@ export default function RefreshTrackedButton() {
         <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-wide">Refresh tracked shows</p>
           <p className="text-[11px] text-ink-soft">
-            Re-fetch watching &amp; watchlist titles from TMDB/AniList.
+            Re-fetch watching &amp; watchlist titles from TMDB.
           </p>
         </div>
         <button

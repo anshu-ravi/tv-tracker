@@ -36,8 +36,8 @@ export interface UserStats {
   // Breakdowns
   topShowsByHours: TopShowStat[];
   tvVsAnime: {
-    tv: { episodes: number; hours: number };
-    anime: { episodes: number; hours: number };
+    tv: { episodes: number };
+    anime: { episodes: number };
   };
   longestSeries: { title: string; episodes: number } | null;
   runtimeIsEstimatedForPct: number;
@@ -87,8 +87,8 @@ function emptyStats(): UserStats {
     statusCounts: { completed: 0, watching: 0, watchlist: 0, dnf: 0 },
     topShowsByHours: [],
     tvVsAnime: {
-      tv: { episodes: 0, hours: 0 },
-      anime: { episodes: 0, hours: 0 },
+      tv: { episodes: 0 },
+      anime: { episodes: 0 },
     },
     longestSeries: null,
     runtimeIsEstimatedForPct: 0,
@@ -188,8 +188,8 @@ export async function getUserStats(supabase: SupabaseClient): Promise<UserStats>
   const aggByTitle = new Map<string, TitleAgg>();
 
   const tvVsAnime = {
-    tv: { episodes: 0, minutes: 0 },
-    anime: { episodes: 0, minutes: 0 },
+    tv: { episodes: 0 },
+    anime: { episodes: 0 },
   };
 
   const perYearMap = new Map<number, { episodes: number; minutes: number }>();
@@ -239,10 +239,8 @@ export async function getUserStats(supabase: SupabaseClient): Promise<UserStats>
 
     if (mediaType === "tv") {
       tvVsAnime.tv.episodes += 1;
-      tvVsAnime.tv.minutes += effectiveRuntime;
     } else if (mediaType === "anime") {
       tvVsAnime.anime.episodes += 1;
-      tvVsAnime.anime.minutes += effectiveRuntime;
     }
 
     if (row.watched_at) {
@@ -330,11 +328,8 @@ export async function getUserStats(supabase: SupabaseClient): Promise<UserStats>
     statusCounts,
     topShowsByHours,
     tvVsAnime: {
-      tv: { episodes: tvVsAnime.tv.episodes, hours: Math.round(tvVsAnime.tv.minutes / 60) },
-      anime: {
-        episodes: tvVsAnime.anime.episodes,
-        hours: Math.round(tvVsAnime.anime.minutes / 60),
-      },
+      tv: { episodes: tvVsAnime.tv.episodes },
+      anime: { episodes: tvVsAnime.anime.episodes },
     },
     longestSeries,
     runtimeIsEstimatedForPct,
