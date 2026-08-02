@@ -73,4 +73,29 @@ describe("GET /api/search/explore", () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({ tv: [], anime: [] });
   });
+
+  it("still returns the tv rail when only the anime top-up fails", async () => {
+    // getTrending() itself degrades independently: a failure in the
+    // discover-tv top-up must not zero out a perfectly good trending-tv
+    // rail. Simulated here by having the mock resolve with a populated tv
+    // rail and an empty anime rail, matching what getTrending() would
+    // return in that scenario.
+    mockGetTrending.mockResolvedValue({ tv: [tvResult], anime: [] });
+
+    const response = await callExplore();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ tv: [tvResult], anime: [] });
+  });
+
+  it("still returns the anime rail when only trending fails", async () => {
+    mockGetTrending.mockResolvedValue({ tv: [], anime: [animeResult] });
+
+    const response = await callExplore();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ tv: [], anime: [animeResult] });
+  });
 });

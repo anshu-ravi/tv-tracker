@@ -44,7 +44,7 @@ async function buildTvTitle(
   const isExisting = EXISTING_TMDB_IDS.has(show.tmdbId);
 
   let enrichment: PlanTitle["enrichment"] = null;
-  let episodes: EnrichedEpisode[] = [];
+  const episodes: EnrichedEpisode[] = [];
   let totalEpisodes: number | null = show.airedEpisodes || null;
   let needsReviewDetail: string | undefined;
   let action: PlanTitle["action"] = isExisting ? "reuse_existing" : "new";
@@ -154,7 +154,7 @@ async function buildAnimeTitle(
   let reason: string;
   let sourceId = "";
   let enrichment: PlanTitle["enrichment"] = null;
-  let episodes: EnrichedEpisode[] = [];
+  const episodes: EnrichedEpisode[] = [];
   let totalEpisodes: number | null = show.airedEpisodes || null;
   let needsReviewDetail: string | undefined;
   // Only populated for NEW anime titles (see episode-building below) — maps
