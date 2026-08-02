@@ -211,3 +211,95 @@ describe("getTvTitle", () => {
     expect(title.isRunning).toBe(false);
   });
 });
+
+describe("getTrending", () => {
+  const trendingResponse = {
+    results: [
+      {
+        id: 1,
+        name: "Trending TV Show",
+        first_air_date: "2020-01-01",
+        poster_path: null,
+        overview: null,
+        genre_ids: [],
+        origin_country: ["US"],
+        original_language: "en",
+      },
+    ],
+  };
+
+  const discoverResponse = {
+    results: [
+      {
+        id: 2,
+        name: "Discover Anime Show",
+        first_air_date: "2021-01-01",
+        poster_path: null,
+        overview: null,
+        genre_ids: [16],
+        origin_country: ["JP"],
+        original_language: "ja",
+      },
+    ],
+  };
+
+  it("keeps the tv rail populated when the discover top-up fails", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/discover/tv")) {
+        return { ok: false, status: 500 } as Response;
+      }
+      return jsonResponse(trendingResponse);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getTrending } = await import("@/lib/tmdb");
+
+    const { tv, anime } = await getTrending();
+
+    expect(tv).toEqual([
+      {
+        source: "tmdb",
+        sourceId: "1",
+        mediaType: "tv",
+        title: "Trending TV Show",
+        year: 2020,
+        posterUrl: null,
+        overview: null,
+      },
+    ]);
+    expect(anime).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("keeps the anime rail populated when the trending fetch fails", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/trending/tv/week")) {
+        return { ok: false, status: 500 } as Response;
+      }
+      return jsonResponse(discoverResponse);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getTrending } = await import("@/lib/tmdb");
+
+    const { tv, anime } = await getTrending();
+
+    expect(tv).toEqual([]);
+    expect(anime).toEqual([
+      {
+        source: "tmdb",
+        sourceId: "2",
+        mediaType: "anime",
+        title: "Discover Anime Show",
+        year: 2021,
+        posterUrl: null,
+        overview: null,
+      },
+    ]);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+});

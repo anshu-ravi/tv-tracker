@@ -175,37 +175,51 @@ export async function getTrending(): Promise<{
     overview: r.overview,
   });
 
-  const url = new URL(BASE + "/trending/tv/week");
-  const res = await fetch(url, {
-    headers: authHeaders(),
-    next: { revalidate: TRENDING_REVALIDATE_SECONDS },
-  });
-  if (!res.ok) throw new Error(`TMDB /trending/tv/week failed: ${res.status}`);
-  const trending = (await res.json()) as { results: TmdbSearchTvResult[] };
-
   const tv: SearchResult[] = [];
   const animeFromTrending: SearchResult[] = [];
-  for (const r of trending.results) {
-    const result = toResult(r);
-    if (result.mediaType === "anime") animeFromTrending.push(result);
-    else tv.push(result);
+  try {
+    const url = new URL(BASE + "/trending/tv/week");
+    const res = await fetch(url, {
+      headers: authHeaders(),
+      next: { revalidate: TRENDING_REVALIDATE_SECONDS },
+    });
+    if (!res.ok) {
+      throw new Error(`TMDB /trending/tv/week failed: ${res.status}`);
+    }
+    const trending = (await res.json()) as { results: TmdbSearchTvResult[] };
+    for (const r of trending.results) {
+      const result = toResult(r);
+      if (result.mediaType === "anime") animeFromTrending.push(result);
+      else tv.push(result);
+    }
+  } catch (err) {
+    // Decorative rail — a failure here shouldn't blank out the anime
+    // top-up below, which is fetched independently.
+    console.error("TMDB trending fetch failed:", err);
   }
 
-  const discoverUrl = new URL(BASE + "/discover/tv");
-  discoverUrl.searchParams.set("with_genres", String(ANIMATION_GENRE_ID));
-  discoverUrl.searchParams.set("with_origin_country", "JP");
-  discoverUrl.searchParams.set("sort_by", "popularity.desc");
-  const discoverRes = await fetch(discoverUrl, {
-    headers: authHeaders(),
-    next: { revalidate: TRENDING_REVALIDATE_SECONDS },
-  });
-  if (!discoverRes.ok) {
-    throw new Error(`TMDB /discover/tv failed: ${discoverRes.status}`);
+  let animeFromDiscover: SearchResult[] = [];
+  try {
+    const discoverUrl = new URL(BASE + "/discover/tv");
+    discoverUrl.searchParams.set("with_genres", String(ANIMATION_GENRE_ID));
+    discoverUrl.searchParams.set("with_origin_country", "JP");
+    discoverUrl.searchParams.set("sort_by", "popularity.desc");
+    const discoverRes = await fetch(discoverUrl, {
+      headers: authHeaders(),
+      next: { revalidate: TRENDING_REVALIDATE_SECONDS },
+    });
+    if (!discoverRes.ok) {
+      throw new Error(`TMDB /discover/tv failed: ${discoverRes.status}`);
+    }
+    const discover = (await discoverRes.json()) as {
+      results: TmdbSearchTvResult[];
+    };
+    animeFromDiscover = discover.results.map(toResult);
+  } catch (err) {
+    // Decorative rail — a failure here shouldn't blank out the trending
+    // TV rail fetched above.
+    console.error("TMDB discover fetch failed:", err);
   }
-  const discover = (await discoverRes.json()) as {
-    results: TmdbSearchTvResult[];
-  };
-  const animeFromDiscover = discover.results.map(toResult);
 
   const seen = new Set(animeFromTrending.map((r) => r.sourceId));
   const anime = animeFromTrending.slice();
