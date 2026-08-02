@@ -26,10 +26,15 @@ export const metadata: Metadata = {
   },
 };
 
+// Pinch-zoom is deliberately disabled per the user's request, on top of the
+// 16px form-control font-size fix in globals.css that already stops iOS's
+// auto-zoom-on-focus.
 export const viewport: Viewport = {
   themeColor: "#f3eedf",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 
