@@ -32,9 +32,11 @@ const TAB_LABEL: Record<Tab, string> = {
 export default function HomeTabs({
   watching,
   upcoming,
+  displayName = "",
 }: {
   watching: WatchingCardData[];
   upcoming: UpcomingItem[];
+  displayName?: string;
 }) {
   const [tab, setTab] = useState<Tab>("watching");
 
@@ -45,6 +47,11 @@ export default function HomeTabs({
 
   return (
     <div className="px-4 py-6">
+      {displayName ? (
+        <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-ink-soft">
+          Hey, {displayName}
+        </p>
+      ) : null}
       <h1 className="display mb-4 text-3xl">Home</h1>
 
       <div className="mb-5 grid grid-cols-2 border-[3px] border-ink">
