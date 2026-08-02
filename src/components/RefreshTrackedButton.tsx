@@ -11,8 +11,10 @@ interface RefreshOutcome {
   error?: string;
 }
 
-// "Refresh all tracked shows" — re-fetches every title the user has as
-// watching/watchlist from its provider and re-upserts titles + episodes.
+// "Refresh all tracked shows" — re-fetches every tracked title (watching,
+// watchlist, completed, dnf) from its provider and re-upserts titles +
+// episodes. Completed shows are included deliberately: a completed show can
+// resume airing.
 // Fixes catalog rows left incomplete by the one-time Trakt import (it only
 // wrote episodes the user had already watched, so unwatched seasons are
 // sometimes missing entirely). Can take a while for a large library, so the
@@ -62,7 +64,7 @@ export default function RefreshTrackedButton() {
         <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-wide">Refresh tracked shows</p>
           <p className="text-[11px] text-ink-soft">
-            Re-fetch watching &amp; watchlist titles from TMDB.
+            Re-fetch every tracked title from TMDB.
           </p>
         </div>
         <button
