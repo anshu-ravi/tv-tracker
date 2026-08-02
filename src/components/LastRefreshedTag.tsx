@@ -49,6 +49,12 @@ function formatRun(run: LastRefreshedRunSummary): { label: string; hasErrors: bo
   return { label, hasErrors: run.errorCount > 0 };
 }
 
+// Single-line subtext rendered beneath the description inside the
+// "Refresh tracked shows" card: "Daily: 2 Aug, 13:13 | Weekly: 2 Aug, 12:37".
+// Uses flex-wrap (not a hard nowrap) so on a narrow phone the two scopes can
+// drop to their own line instead of overflowing the card or colliding with
+// the refresh icon button — the card's flex row already gives this column
+// `min-w-0` for that to work.
 export default function LastRefreshedTag({
   runningRun,
   allRun,
@@ -58,21 +64,24 @@ export default function LastRefreshedTag({
 }) {
   if (!runningRun && !allRun) {
     return (
-      <p className="mt-1.5 text-[10px] uppercase tracking-wide text-ink-soft">
+      <p className="text-[10px] uppercase tracking-wide text-ink-soft">
         Not refreshed yet
       </p>
     );
   }
 
   return (
-    <div className="mt-1.5 flex flex-col gap-0.5">
-      <RunLine scopeLabel="Nightly" run={runningRun} />
-      <RunLine scopeLabel="Weekly" run={allRun} />
-    </div>
+    <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[10px] uppercase tracking-wide text-ink-soft">
+      <RunFragment scopeLabel="Daily" run={runningRun} />
+      <span aria-hidden="true" className="text-ink-soft/50">
+        |
+      </span>
+      <RunFragment scopeLabel="Weekly" run={allRun} />
+    </p>
   );
 }
 
-function RunLine({
+function RunFragment({
   scopeLabel,
   run,
 }: {
@@ -80,22 +89,14 @@ function RunLine({
   run: LastRefreshedRunSummary | null;
 }) {
   if (!run) {
-    return (
-      <p className="text-[10px] uppercase tracking-wide text-ink-soft">
-        {scopeLabel}: not refreshed yet
-      </p>
-    );
+    return <span>{scopeLabel}: not refreshed yet</span>;
   }
 
   const { label, hasErrors } = formatRun(run);
 
   return (
-    <p
-      className={
-        hasErrors
-          ? "text-[10px] font-bold uppercase tracking-wide text-red-600"
-          : "text-[10px] uppercase tracking-wide text-ink-soft"
-      }
+    <span
+      className={hasErrors ? "font-bold text-red-600" : undefined}
       suppressHydrationWarning
     >
       {scopeLabel}: {label}
@@ -105,6 +106,6 @@ function RunLine({
           — {run.errorCount} error{run.errorCount === 1 ? "" : "s"}
         </>
       )}
-    </p>
+    </span>
   );
 }

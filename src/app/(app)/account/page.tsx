@@ -4,9 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import ProfileEditor from "@/components/ProfileEditor";
 import RefreshTrackedButton from "@/components/RefreshTrackedButton";
-import LastRefreshedTag, {
-  type LastRefreshedRunSummary,
-} from "@/components/LastRefreshedTag";
+import { type LastRefreshedRunSummary } from "@/components/LastRefreshedTag";
 
 interface RefreshRunRow {
   finished_at: string;
@@ -106,10 +104,7 @@ export default async function AccountPage() {
         </form>
       </div>
 
-      <RefreshTrackedButton />
-      <div className="-mt-2 px-1">
-        <LastRefreshedTag runningRun={lastRunningRun} allRun={lastAllRun} />
-      </div>
+      <RefreshTrackedButton lastRunningRun={lastRunningRun} lastAllRun={lastAllRun} />
 
       <Link
         href="/account/stats"
