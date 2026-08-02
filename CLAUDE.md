@@ -13,16 +13,19 @@ npm run dev      # start dev server (Next.js + Turbopack) at http://localhost:30
 npm run build    # production build
 npm run start    # serve the production build
 npm run lint     # eslint (eslint-config-next)
+npm test         # vitest run — full suite, tests/**/*.test.ts
+npm run test:watch  # vitest, watch mode
+npx vitest run tests/lib/tmdb.test.ts   # single file
+npx vitest run -t "name fragment"       # single test by name
 ```
-
-There is no test runner configured yet. Single files: once a test setup exists, document the single-test invocation here.
 
 ## Stack
 
 - **Next.js 16** (App Router, `src/` dir, import alias `@/*`) + **React 19** + **TypeScript** + **Tailwind CSS v4** (CSS-first config via `@theme` in `src/app/globals.css`, not a `tailwind.config.js`).
 - **Framer Motion** for the mark-watched micro-interaction.
+- **Vitest** for tests (`vitest.config.mts`, Node environment, `tests/**/*.test.ts`).
 - **Supabase** (Postgres 17 + Auth + planned pg_cron) — project ref `ermhfiofisjsrniccqlv` ("Tv-Tracker", eu-west-1). Accessed from the app via `@supabase/ssr`.
-- **Data providers:** TMDB (TV/movies) and AniList (anime, GraphQL) — see Data layer below.
+- **Data provider:** TMDB only, for both TV and anime — see Data layer below. AniList and Jikan (MyAnimeList) were tried for anime and retired; their clients are deleted from `src/lib/`.
 - Deploy target: Vercel.
 
 > ⚠️ This is Next.js 16 — newer than most training data; APIs/conventions may differ. When unsure, read `node_modules/next/dist/docs/` before writing framework code. Notably: `cookies()` is async, and route/page `params` are Promises.
@@ -31,42 +34,51 @@ There is no test runner configured yet. Single files: once a test setup exists, 
 
 - **Never read `.env` or print its contents.** The user placed the TMDB key there and explicitly asked that it never be read. Reference it only as `process.env.TMDB_API_KEY` in server code; to check presence, test that the var is non-empty — never log the value. `.gitignore` ignores all `.env*`.
 - Supabase public config lives in `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` = the publishable key). Not committed.
-- Provider API calls (TMDB/AniList) happen **server-side only** (route handlers / server components), never from the browser.
+- Provider API calls (TMDB, OMDb for ratings) happen **server-side only** (route handlers / server components), never from the browser.
 - **Never add Claude/AI attribution to git history.** The user explicitly does not want co-author trailers on commits or a "Generated with Claude Code" line in PR bodies. This overrides the usual default — omit both.
 
 ## Architecture
 
 ### Data model (Supabase Postgres — applied via migrations)
 
-Two shared **catalog** tables + two per-user **tracking** tables:
+Two shared **catalog** tables + four per-user **tracking/organization** tables:
 
-- `titles` — one row per show/anime/movie. Keyed by `(source, source_id)` where `source ∈ {tmdb, anilist}`; `media_type ∈ {tv, anime, movie}`. Holds poster/backdrop, `is_running`, `total_episodes`, and cron-refreshed `next_episode_air_date` / `next_episode_label`.
-- `episodes` — episodes per title, unique on `(title_id, season_number, episode_number)`; anime use season 1 + `absolute_number`.
+- `titles` — one row per show/anime/movie. Keyed by `(source, source_id)` where `source ∈ {tmdb, anilist}` (the `anilist` enum value is retained for history but no title rows use it anymore — anime is fully TMDB-sourced, see below); `media_type ∈ {tv, anime, movie}`. Holds poster/backdrop, `is_running`, `total_episodes`, cron-refreshed `next_episode_air_date` / `next_episode_label`, and `tmdb_match_id` / `tmdb_match_strategy` / `tmdb_match_season` / `tmdb_match_checked_at` (leftover from the AniList→TMDB anime migration; strategy ∈ `whole`/`season`/`group`).
+- `episodes` — episodes per title, unique on `(title_id, season_number, episode_number)`. Anime now carry **real TMDB season/episode coordinates** (not season-1-only); `absolute_number` is still populated on every anime episode because `src/lib/animefillerlist.ts` keys filler-arc lookups on it.
 - `user_titles` — the user's bucket for a title: `status ∈ {watchlist, watching, completed, dnf}`, unique `(user_id, title_id)`.
-- `watched_episodes` — the one-tap marks; unique `(user_id, episode_id)`, with denormalized `title_id` for fast per-show progress counts.
+- `watched_episodes` — the one-tap marks; unique `(user_id, episode_id)`, with denormalized `title_id` for fast per-show progress counts. `watched_at` is nullable ("watched, but date unknown" for retrospective completes); per-episode/season marks still default to `now()`.
+- `lists` — user-created named collections, plus a single reserved `is_favorites=true` row per user (lazily created on first favorite) backing the Favorites feature.
+- `list_titles` — membership rows joining `lists` to `titles`, unique `(list_id, title_id)`.
 
-Enums: `media_type`, `watch_status`, `data_source`. An `updated_at` trigger (`set_updated_at`, `search_path=''`) maintains timestamps.
+Enums: `media_type`, `watch_status`, `data_source`. An `updated_at` trigger (`set_updated_at`, `search_path=''`) maintains timestamps. Profile fields (display name, avatar) live on the Supabase Auth user, not a separate table; avatar images sit in the `avatars` Storage bucket.
 
 ### Row Level Security
 
-RLS is on for all four tables:
+RLS is on for all six tables:
 - **Catalog** (`titles`, `episodes`): authenticated users can `select`; and — because this is a single-user app with no service-role secret on the server — authenticated users may also `insert`/`update` (so adding a show from search can populate the catalog). If this ever becomes multi-user, move catalog writes behind a service role and drop those write policies.
-- **Tracking** (`user_titles`, `watched_episodes`): owner-only, gated by `user_id = auth.uid()` (default `auth.uid()` on insert).
+- **Tracking/organization** (`user_titles`, `watched_episodes`, `lists`, `list_titles`): owner-only. `user_titles`/`watched_episodes`/`lists` are gated by `user_id = auth.uid()` (default `auth.uid()` on insert); `list_titles` has no `user_id` of its own — ownership is checked by joining up to the parent `lists` row.
+- The `avatars` Storage bucket is public-read (avatar URLs render without signed URLs) with authenticated-only insert/update/delete.
 
 Migrations are applied through the Supabase MCP tools; keep any local copies under `supabase/migrations/`. After DDL changes, run the Supabase **security & performance advisors** and address findings.
 
 > Note: a pre-existing `public.rls_auto_enable()` SECURITY DEFINER function exists in the project (not created by this repo) and is flagged by the security advisor as publicly executable. Confirm its purpose with the user before relying on or removing it.
 
-### Data layer (`src/lib/`, planned/in progress)
+### Data layer (`src/lib/`)
 
-- `lib/tmdb.ts` — TV search + details/episodes from TMDB (bearer token auth).
-- `lib/anilist.ts` — anime search + airing schedule from AniList (GraphQL, no key).
-- `lib/types.ts` — normalized shapes (`NormalizedTitle`, `NormalizedEpisode`) so both providers map onto the same catalog rows.
-- `lib/supabase/{client,server}.ts` + `middleware.ts` — browser and cookie-based server clients via `@supabase/ssr`.
+- `lib/tmdb.ts` — TV **and anime** search + details/episodes from TMDB (bearer token auth); anime search is classified via the Animation genre + a Japanese-origin heuristic.
+- `lib/tmdbAnimeMatch.ts` — matching helpers used to resolve/enrich anime titles against TMDB.
+- `lib/animefillerlist.ts` — scrapes animefillerlist.com to tag filler episodes, keyed on `absolute_number`.
+- `lib/ratings.ts` — IMDb + Rotten Tomatoes ratings via OMDb, fetched live for the title detail screen (not stored in the DB).
+- `lib/favorites.ts`, `lib/stats.ts`, `lib/useTitleActions.ts` — favorites/list helpers, stats aggregation, and the shared client-side hook behind card actions.
+- `lib/types.ts` — normalized shapes (`NormalizedTitle`, `NormalizedEpisode`) so catalog rows have one shape regardless of provider.
+- `lib/supabase/{client,server,middleware}.ts` + `src/proxy.ts` — browser and cookie-based server clients via `@supabase/ssr`.
+- `lib/api/` — server-side helpers backing the route handlers (e.g. catalog refresh/upsert).
+
+AniList and Jikan (MyAnimeList) clients that used to live here were retired once anime moved fully to TMDB; they only remain inside one-off `scripts/*` migration/import tooling, not in the app's `src/lib/`.
 
 ### App surfaces
 
-Bottom-tab PWA: **Home** (currently-watching cards + one-tap mark-watched) · **TV** and **Anime** (poster-cover **grids** split into the four buckets, DNF muted) · **Watchlist** · **Search** (query TMDB + AniList, add to a bucket).
+Bottom-tab PWA with **4 icon tabs**: **Home** (currently-watching cards, split into Up Next / Catch Up, plus Upcoming and one-tap mark-watched) · **Library** (a route group over `/tv`, `/anime`, `/watchlist`, `/lists`, poster-cover grids split into the four status buckets, DNF muted, switched via a segmented sub-nav) · **Search** (query TMDB for TV and anime, add to a bucket) · **Account** (profile, sign out, and `/account/stats`).
 
 ## Design language — "Bold"
 
