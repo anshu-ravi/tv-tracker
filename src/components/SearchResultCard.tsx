@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import type { SearchResult, WatchStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
@@ -66,11 +67,12 @@ export default function SearchResultCard({
   }
 
   const poster = result.posterUrl ? (
-    <img
+    <Image
       src={result.posterUrl}
       alt={result.title}
-      className="h-full w-full object-cover"
-      loading="lazy"
+      fill
+      sizes="(max-width: 640px) 33vw, 200px"
+      className="object-cover"
     />
   ) : (
     <div className="flex h-full w-full items-center justify-center p-2 text-center">
@@ -90,7 +92,7 @@ export default function SearchResultCard({
   return (
     <div className="card-bold overflow-hidden p-0">
       <Link href={posterHref}>
-        <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
+        <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
           {poster}
         </div>
       </Link>

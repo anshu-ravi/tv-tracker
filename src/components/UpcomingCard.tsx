@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { UpcomingItem } from "@/components/HomeTabs";
 // (type-only import — no runtime dependency on HomeTabs, so no circularity.)
 
@@ -21,12 +22,14 @@ function daysUntilLabel(daysUntil: number): string {
 export default function UpcomingCard({ item }: { item: UpcomingItem }) {
   return (
     <Link href={`/title/${item.titleId}`} className="card-bold flex items-center gap-3 p-3">
-      <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel">
+      <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel">
         {item.posterUrl ? (
-          <img
+          <Image
             src={item.posterUrl}
             alt={item.title}
-            className="h-full w-full object-cover"
+            fill
+            sizes="64px"
+            className="object-cover"
           />
         ) : null}
       </div>

@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { getTvCredits, getTvTitle } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
@@ -125,8 +126,15 @@ export default async function PreviewPage({
     <div className="pb-10">
       {title.backdropUrl ? (
         <div className="relative">
-          <div className="aspect-[16/9] w-full border-b-[3px] border-ink bg-panel">
-            <img src={title.backdropUrl} alt="" className="h-full w-full object-cover" />
+          <div className="relative aspect-[16/9] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
+            <Image
+              src={title.backdropUrl}
+              alt=""
+              fill
+              sizes="100vw"
+              className="object-cover"
+              priority
+            />
           </div>
           <div className="absolute left-4 top-4">
             <BackButton />
@@ -139,12 +147,14 @@ export default async function PreviewPage({
       )}
 
       <div className="flex gap-4 px-4 pt-4">
-        <div className="h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
+        <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
           {title.posterUrl ? (
-            <img
+            <Image
               src={title.posterUrl}
               alt={title.title}
-              className="h-full w-full object-cover"
+              fill
+              sizes="96px"
+              className="object-cover"
             />
           ) : null}
         </div>
@@ -173,12 +183,14 @@ export default async function PreviewPage({
         <div className="mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
           {credits.cast.map((member, i) => (
             <div key={`${member.name}-${i}`} className="card-bold w-20 shrink-0 overflow-hidden p-0">
-              <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
+              <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
                 {member.imageUrl ? (
-                  <img
+                  <Image
                     src={member.imageUrl}
                     alt={member.name}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="80px"
+                    className="object-cover"
                   />
                 ) : null}
               </div>

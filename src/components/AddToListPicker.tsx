@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 // A candidate title from the user's tracked library that isn't already in
 // this list — the server page has already excluded anything already a
@@ -102,12 +103,14 @@ export default function AddToListPicker({
                       disabled={pendingId === candidate.id}
                       className="flex w-full items-center gap-2 px-2 py-2 text-left disabled:opacity-50"
                     >
-                      <div className="h-11 w-8 shrink-0 overflow-hidden border-2 border-ink bg-panel">
+                      <div className="relative h-11 w-8 shrink-0 overflow-hidden border-2 border-ink bg-panel">
                         {candidate.posterUrl ? (
-                          <img
+                          <Image
                             src={candidate.posterUrl}
                             alt=""
-                            className="h-full w-full object-cover"
+                            fill
+                            sizes="32px"
+                            className="object-cover"
                           />
                         ) : null}
                       </div>

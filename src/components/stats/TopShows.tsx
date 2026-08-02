@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { UserStats } from "@/lib/stats";
 
 // Up to 10 rows, each a horizontal bar sized relative to the max hours in
@@ -18,13 +19,14 @@ export default function TopShows({ stats }: { stats: UserStats }) {
             const widthPct = Math.max((show.hours / maxHours) * 100, 4);
             return (
               <div key={show.titleId} className="flex items-center gap-2">
-                <div className="h-9 w-9 shrink-0 overflow-hidden border-2 border-ink bg-panel">
+                <div className="relative h-9 w-9 shrink-0 overflow-hidden border-2 border-ink bg-panel">
                   {show.posterUrl ? (
-                    <img
+                    <Image
                       src={show.posterUrl}
                       alt={show.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
+                      fill
+                      sizes="36px"
+                      className="object-cover"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center">

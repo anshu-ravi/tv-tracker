@@ -103,6 +103,10 @@ export default function ProfileEditor({ initialDisplayName, initialAvatarUrl }: 
           className="border-[3px] border-ink bg-paper px-3 py-2 text-sm font-bold text-ink outline-none file:mr-3 file:border-[3px] file:border-ink file:bg-acid file:px-2 file:py-1 file:text-[11px] file:font-bold file:uppercase file:tracking-wide"
         />
         {previewUrl && (
+          // previewUrl is a client-side blob: object URL (URL.createObjectURL),
+          // not a remote image; next/image's optimizer can't fetch/transform a
+          // blob: URL.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={previewUrl}
             alt="New profile photo preview"

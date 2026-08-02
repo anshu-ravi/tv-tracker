@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import ProgressBar from "@/components/ProgressBar";
@@ -241,13 +242,15 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
     <div className="card-bold relative flex items-start gap-3 p-3">
       <Link
         href={`/title/${data.titleId}`}
-        className="h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel"
+        className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel"
       >
         {data.posterUrl ? (
-          <img
+          <Image
             src={data.posterUrl}
             alt={data.title}
-            className="h-full w-full object-cover"
+            fill
+            sizes="64px"
+            className="object-cover"
           />
         ) : null}
       </Link>
