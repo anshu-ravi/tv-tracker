@@ -13,6 +13,10 @@ interface RefreshRunRow {
   error_count: number;
 }
 
+function toSummary(row: RefreshRunRow | null): LastRefreshedRunSummary | null {
+  return row ? { finishedAt: row.finished_at, errorCount: row.error_count } : null;
+}
+
 // Account screen — profile (display name + avatar, stored in Supabase Auth
 // user_metadata) plus identity + sign out, moved here from the app-shell
 // header. Future home for per-user stats (shows tracked, episodes watched).
@@ -26,22 +30,31 @@ export default async function AccountPage() {
   const avatarUrl: string | null = user?.user_metadata?.avatar_url ?? null;
   const initial = (displayName || user?.email || "?").charAt(0).toUpperCase();
 
-  // Most recent nightly refresh run (supabase/functions/refresh-air-dates),
-  // so the owner can tell at a glance whether the cron job is running — see
-  // supabase/migrations/*_refresh_runs.sql.
-  const { data: latestRun } = await supabase
-    .from("refresh_runs")
-    .select("finished_at, error_count")
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Most recent run per scope (supabase/functions/refresh-air-dates), so the
+  // owner can tell at a glance whether both the nightly ("running") and
+  // weekly ("all") cron jobs are actually running — see
+  // supabase/migrations/*_refresh_runs.sql. Two schedules means one "last
+  // refreshed" reading would be ambiguous, so each scope is fetched and
+  // shown separately.
+  const [{ data: latestRunningRun }, { data: latestAllRun }] = await Promise.all([
+    supabase
+      .from("refresh_runs")
+      .select("finished_at, error_count")
+      .eq("scope", "running")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("refresh_runs")
+      .select("finished_at, error_count")
+      .eq("scope", "all")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  const lastRefreshedRun: LastRefreshedRunSummary | null = latestRun
-    ? {
-        finishedAt: (latestRun as RefreshRunRow).finished_at,
-        errorCount: (latestRun as RefreshRunRow).error_count,
-      }
-    : null;
+  const lastRunningRun = toSummary(latestRunningRun as RefreshRunRow | null);
+  const lastAllRun = toSummary(latestAllRun as RefreshRunRow | null);
 
   return (
     <div className="px-4 py-6">
@@ -94,7 +107,7 @@ export default async function AccountPage() {
       </div>
 
       <RefreshTrackedButton />
-      <LastRefreshedTag run={lastRefreshedRun} />
+      <LastRefreshedTag runningRun={lastRunningRun} allRun={lastAllRun} />
 
       <Link
         href="/account/stats"
