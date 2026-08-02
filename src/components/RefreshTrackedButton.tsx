@@ -3,12 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshIcon } from "@/components/icons";
+import LastRefreshedTag, {
+  type LastRefreshedRunSummary,
+} from "@/components/LastRefreshedTag";
 
 interface RefreshOutcome {
   titleId: string;
   ok: boolean;
   title?: string;
   error?: string;
+}
+
+interface RefreshTrackedButtonProps {
+  lastRunningRun: LastRefreshedRunSummary | null;
+  lastAllRun: LastRefreshedRunSummary | null;
 }
 
 // "Refresh all tracked shows" — re-fetches every tracked title (watching,
@@ -19,7 +27,10 @@ interface RefreshOutcome {
 // wrote episodes the user had already watched, so unwatched seasons are
 // sometimes missing entirely). Can take a while for a large library, so the
 // button disables itself and reports a summary rather than failing silently.
-export default function RefreshTrackedButton() {
+export default function RefreshTrackedButton({
+  lastRunningRun,
+  lastAllRun,
+}: RefreshTrackedButtonProps) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
@@ -66,6 +77,9 @@ export default function RefreshTrackedButton() {
           <p className="text-[11px] text-ink-soft">
             Re-fetch every tracked title from TMDB.
           </p>
+          <div className="mt-1">
+            <LastRefreshedTag runningRun={lastRunningRun} allRun={lastAllRun} />
+          </div>
         </div>
         <button
           type="button"
