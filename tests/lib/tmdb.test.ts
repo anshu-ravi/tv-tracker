@@ -177,6 +177,7 @@ describe("getTvTitle", () => {
       {
         seasonNumber: 1,
         episodeNumber: 1,
+        absoluteNumber: null,
         name: "Good News About Hell",
         overview: "Ep 1 overview",
         airDate: "2022-02-18",
@@ -186,6 +187,7 @@ describe("getTvTitle", () => {
       {
         seasonNumber: 1,
         episodeNumber: 2,
+        absoluteNumber: null,
         name: "Half Loop",
         overview: null,
         airDate: "2022-02-18",
