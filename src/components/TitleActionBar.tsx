@@ -69,7 +69,7 @@ export default function TitleActionBar({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
-  // Re-fetches this title from its provider (TMDB/AniList) and re-upserts
+  // Re-fetches this title from its provider (TMDB) and re-upserts
   // titles + episodes — fixes shows left incomplete by the one-time Trakt
   // import (e.g. a season that was never added because nothing in it had
   // been watched yet). Only meaningful once the title is actually in the

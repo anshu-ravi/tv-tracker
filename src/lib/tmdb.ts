@@ -133,9 +133,8 @@ function classifyTmdbSearchResult(r: TmdbSearchTvResult): MediaType {
 
 // Searches TMDB's /search/tv and classifies each result as "tv" or "anime"
 // (see classifyTmdbSearchResult) — TMDB is now the sole search/add source
-// for anime as well as TV (AniList is retired for search; lib/anilist.ts
-// stays intact only to serve titles still `source = 'anilist'` in the DB
-// during the migration).
+// for anime as well as TV. AniList has been fully retired: no catalog rows
+// reference it anymore, and lib/anilist.ts has been deleted.
 export async function searchTv(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
   const data = await tmdb<{ results: TmdbSearchTvResult[] }>("/search/tv", {

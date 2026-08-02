@@ -10,7 +10,6 @@ const { mockCreateClient, mockGetTvTitle } = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mockCreateClient }));
 vi.mock("@/lib/tmdb", () => ({ getTvTitle: mockGetTvTitle }));
-vi.mock("@/lib/anilist", () => ({ getAnimeTitle: vi.fn() }));
 
 const normalizedTitle: NormalizedTitle = {
   source: "tmdb",

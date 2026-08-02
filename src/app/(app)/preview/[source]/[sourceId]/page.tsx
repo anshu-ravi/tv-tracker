@@ -1,9 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAnimeCredits, getAnimeTitle } from "@/lib/anilist";
 import { getTvCredits, getTvTitle } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
-import { getAnimeRatings, getTvRatings } from "@/lib/ratings";
+import { getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import PreviewEpisodeList, { type PreviewSeasonGroup } from "@/components/PreviewEpisodeList";
 import RatingBadges from "@/components/RatingBadges";
@@ -31,10 +30,10 @@ function formatDate(iso: string | null | undefined): string | null {
 }
 
 // Live, read-only detail view for a title the user hasn't added yet — built
-// straight from the provider (TMDB/AniList), nothing written to the DB. This
-// is what search results link to until a title is actually tracked, so the
-// action bar (status/list/favorite) can do the first write and hand off to
-// the real /title/:id page.
+// straight from the provider (TMDB), nothing written to the DB. This is what
+// search results link to until a title is actually tracked, so the action
+// bar (status/list/favorite) can do the first write and hand off to the real
+// /title/:id page.
 export default async function PreviewPage({
   params,
   searchParams,
@@ -45,21 +44,15 @@ export default async function PreviewPage({
   const { source, sourceId } = await params;
   const { mediaType: mediaTypeParam } = await searchParams;
 
-  if (source !== "tmdb" && source !== "anilist") notFound();
+  if (source !== "tmdb") notFound();
   const dataSource = source as DataSource;
   // TMDB no longer implies "tv" — it's also the source for anime now (see
   // classifyTmdbSearchResult in lib/tmdb.ts), and TMDB's own id space
   // doesn't distinguish the two, so the search result link carries
-  // ?mediaType=... explicitly (see SearchResultCard). anilist source is
-  // always anime (that provider only ever served anime). Fall back to "tv"
-  // for a bare/bookmarked tmdb link with no query param — the more common
-  // case by far.
-  const mediaType: MediaType =
-    dataSource === "anilist"
-      ? "anime"
-      : mediaTypeParam === "anime"
-        ? "anime"
-        : "tv";
+  // ?mediaType=... explicitly (see SearchResultCard). Fall back to "tv" for
+  // a bare/bookmarked link with no query param — the more common case by
+  // far.
+  const mediaType: MediaType = mediaTypeParam === "anime" ? "anime" : "tv";
 
   // Cheap existing-library check first: if this title is already tracked,
   // send the user straight to the real (writable, DB-backed) detail page
@@ -84,10 +77,7 @@ export default async function PreviewPage({
 
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
   try {
-    fetched =
-      dataSource === "tmdb"
-        ? await getTvTitle(sourceId, { mediaType })
-        : await getAnimeTitle(sourceId);
+    fetched = await getTvTitle(sourceId, { mediaType });
   } catch (err) {
     console.error("Failed to fetch live title for preview:", err);
     notFound();
@@ -96,16 +86,14 @@ export default async function PreviewPage({
 
   let credits: TitleCredits = { creators: [], cast: [] };
   try {
-    credits =
-      dataSource === "tmdb" ? await getTvCredits(sourceId) : await getAnimeCredits(sourceId);
+    credits = await getTvCredits(sourceId);
   } catch (err) {
     console.error("Failed to fetch credits:", err);
   }
 
-  let ratings: TitleRatings = { imdb: null, rottenTomatoes: null, anilistScore: null };
+  let ratings: TitleRatings = { imdb: null, rottenTomatoes: null };
   try {
-    ratings =
-      dataSource === "tmdb" ? await getTvRatings(sourceId) : await getAnimeRatings(sourceId);
+    ratings = await getTvRatings(sourceId);
   } catch (err) {
     console.error("Failed to fetch ratings:", err);
   }

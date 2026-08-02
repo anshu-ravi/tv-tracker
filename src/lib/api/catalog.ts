@@ -10,10 +10,7 @@
 // provider that title already came from. Used to backfill catalog rows that
 // were only partially populated (e.g. the one-time Trakt import only wrote
 // episodes the user had actually watched — see scripts/refresh-catalog/).
-import { getAnimeTitle } from "@/lib/anilist";
 import { getTvTitle } from "@/lib/tmdb";
-import { getEpisodeSynopsis, getEpisodeTitles } from "@/lib/jikan";
-import { resolveAnimeTmdbMatch, applyTmdbAnimeMatch } from "@/lib/tmdbAnimeMatch";
 import type {
   DataSource,
   MediaType,
@@ -86,15 +83,12 @@ async function upsertTitleAndEpisodes(
   // season 1. A refresh can add whole new seasons here (that's the point —
   // the original Trakt import only wrote episodes the user had watched).
   if (episodes.length > 0) {
-    // AniList (anime) episodes carry no name/overview at all — those are
-    // filled in separately by enrichAnimeEpisodes (Jikan), below. Whether a
-    // given fetch includes those fields is uniform across the whole array
-    // (they either all come from TMDB, which always has them, or all from
-    // AniList, which never does), so the presence check only needs to run
-    // once. Omitting the key entirely — rather than writing `?? null` — is
-    // what matters: PostgREST only touches columns present in the payload,
-    // so a refresh can never overwrite a name/synopsis Jikan already wrote
-    // with null just because this fetch didn't have one.
+    // Whether a given fetch includes name/overview is uniform across the
+    // whole array, so the presence check only needs to run once. Omitting
+    // the key entirely — rather than writing `?? null` — is what matters:
+    // PostgREST only touches columns present in the payload, so a refresh
+    // can never overwrite a name/synopsis already written with null just
+    // because this fetch didn't have one.
     const hasName = episodes.some((ep) => ep.name !== undefined);
     const hasOverview = episodes.some((ep) => ep.overview !== undefined);
     const episodeRows = episodes.map((ep) => ({
@@ -124,149 +118,6 @@ async function upsertTitleAndEpisodes(
   return { titleId, title, episodesUpserted: episodes.length };
 }
 
-// ---- anime episode enrichment (Jikan) ---------------------------------
-
-// AniList has episode air dates but no per-episode title/synopsis field at
-// all, so those are backfilled from Jikan/MAL (see lib/jikan.ts) as a
-// second pass *after* the main upsert above has written the episode rows.
-// Doing it as a separate targeted UPDATE (rather than folding it into the
-// upsert payload) means it can never clobber a good name/overview that's
-// already in the DB with a null from a run that didn't find one.
-//
-// Synopses are one Jikan request per episode (no bulk endpoint), so they're
-// rationed: only episodes still missing an overview are fetched, and only up
-// to this many per run. A long-running show like Bleach (366 eps) then
-// converges over several refreshes instead of one very slow run.
-const MAX_SYNOPSIS_PER_RUN = 100;
-
-interface EpisodeEnrichmentRow {
-  id: string;
-  episode_number: number;
-  name: string | null;
-  overview: string | null;
-}
-
-// Best-effort: any failure here (bad malId, Jikan down, DB error) is logged
-// and swallowed — enrichment is a nice-to-have layered on top of the catalog
-// data that already got written by upsertTitleAndEpisodes.
-async function enrichAnimeEpisodes(
-  supabase: SupabaseClient,
-  titleId: string,
-  malId: number | null,
-): Promise<void> {
-  if (!malId) return; // not every AniList entry maps to a MAL id
-
-  try {
-    const { data, error } = await supabase
-      .from("episodes")
-      .select("id, episode_number, name, overview")
-      .eq("title_id", titleId)
-      .eq("season_number", 1); // anime is always tracked as season 1
-
-    if (error || !data) {
-      console.error("Jikan enrichment: failed to load episodes for", titleId, error);
-      return;
-    }
-    const rows = data as EpisodeEnrichmentRow[];
-    if (rows.length === 0) return;
-
-    // Episode titles: cheap (a handful of paginated calls), so always fetch
-    // and fill in whatever's currently missing.
-    const titleMap = await getEpisodeTitles(malId);
-    for (const row of rows) {
-      const title = titleMap.get(row.episode_number);
-      if (!title || row.name) continue; // never overwrite an existing name
-      const { error: updateError } = await supabase
-        .from("episodes")
-        .update({ name: title })
-        .eq("id", row.id);
-      if (updateError) console.error("Jikan enrichment: failed to update name for", row.id, updateError);
-    }
-
-    // Synopses: one request each, capped per run. Fetch in episode order so
-    // repeated runs steadily backfill from the start of the series.
-    const missingOverview = rows
-      .filter((r) => !r.overview)
-      .sort((a, b) => a.episode_number - b.episode_number)
-      .slice(0, MAX_SYNOPSIS_PER_RUN);
-
-    for (const row of missingOverview) {
-      const synopsis = await getEpisodeSynopsis(malId, row.episode_number);
-      if (!synopsis) continue;
-      const { error: updateError } = await supabase
-        .from("episodes")
-        .update({ overview: synopsis })
-        .eq("id", row.id);
-      if (updateError) console.error("Jikan enrichment: failed to update overview for", row.id, updateError);
-    }
-  } catch (err) {
-    console.error("Jikan enrichment failed for title", titleId, err);
-  }
-}
-
-// ---- anime episode enrichment (TMDB) ------------------------------------
-
-// AniList has episode air dates but (like Jikan) no per-episode synopsis at
-// all — see lib/tmdbAnimeMatch.ts for the full rationale and matching logic.
-// This just wires it in: skip fast if a previous run already tried and
-// failed (tmdb_match_checked_at set, tmdb_match_id still null — no point
-// re-searching TMDB every refresh for a show it couldn't find), otherwise
-// resolve (or re-resolve, if previously matched — cheap idempotent re-check
-// that also picks up newly added episodes) and persist. Best-effort: any
-// failure here is logged and swallowed, exactly like enrichAnimeEpisodes
-// above — this must never break a catalog refresh.
-interface TitleTmdbMatchStateRow {
-  tmdb_match_id: number | null;
-  tmdb_match_checked_at: string | null;
-}
-
-async function enrichAnimeFromTmdb(
-  supabase: SupabaseClient,
-  titleId: string,
-  anime: {
-    titleEnglish: string | null;
-    titleRomaji: string | null;
-    title: NormalizedTitle;
-  },
-): Promise<void> {
-  try {
-    const { data: titleRow, error: titleRowError } = await supabase
-      .from("titles")
-      .select("tmdb_match_id, tmdb_match_checked_at")
-      .eq("id", titleId)
-      .maybeSingle();
-    if (titleRowError || !titleRow) return;
-
-    const state = titleRow as TitleTmdbMatchStateRow;
-    if (state.tmdb_match_checked_at && !state.tmdb_match_id) return; // previously failed — don't retry every run
-
-    // Prefer the already-written absolute-episode-1 row's air date over
-    // AniList's show-level firstAirDate (a real episode air date is a
-    // tighter check than a series premiere date that can predate episode 1
-    // in some entries).
-    let ep1AirDate: string | null = anime.title.firstAirDate ?? null;
-    const { data: ep1 } = await supabase
-      .from("episodes")
-      .select("air_date")
-      .eq("title_id", titleId)
-      .eq("season_number", 1)
-      .eq("absolute_number", 1)
-      .maybeSingle();
-    if (ep1?.air_date) ep1AirDate = ep1.air_date;
-
-    const result = await resolveAnimeTmdbMatch({
-      anilistTitleEnglish: anime.titleEnglish,
-      anilistTitleRomaji: anime.titleRomaji,
-      anilistTotalEpisodes: anime.title.totalEpisodes ?? null,
-      anilistEp1AirDate: ep1AirDate,
-    });
-
-    await applyTmdbAnimeMatch(supabase, titleId, result);
-  } catch (err) {
-    console.error("TMDB anime enrichment failed for title", titleId, err);
-  }
-}
-
 export async function ensureCatalogTitle(
   supabase: SupabaseClient,
   { source, sourceId, mediaType }: EnsureCatalogTitleInput,
@@ -275,31 +126,20 @@ export async function ensureCatalogTitle(
     return { error: "source, sourceId, and mediaType are required", status: 400 };
   }
 
-  // tv is TMDB-only. anime is TMDB-only for new adds (search now only
-  // returns tmdb-sourced anime — see classifyTmdbSearchResult in lib/tmdb.ts)
-  // but the anilist branch stays so a title still `source = 'anilist'` in
-  // the DB (not yet flipped by the migration tool) can still be re-added /
-  // re-resolved via a stale preview link. Movies are reserved in the schema
-  // but have no provider client yet.
+  // tv and anime are both TMDB-only (search only ever returns tmdb-sourced
+  // results — see classifyTmdbSearchResult in lib/tmdb.ts). Movies are
+  // reserved in the schema but have no provider client yet.
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
-  let malId: number | null = null;
   if (mediaType === "tv" && source === "tmdb") {
     fetched = await getTvTitle(sourceId);
   } else if (mediaType === "anime" && source === "tmdb") {
     fetched = await getTvTitle(sourceId, { mediaType: "anime" });
-  } else if (mediaType === "anime" && source === "anilist") {
-    const anime = await getAnimeTitle(sourceId);
-    fetched = anime;
-    malId = anime.malId;
   } else {
     return { error: "Unsupported source/mediaType combination", status: 400 };
   }
 
   const result = await upsertTitleAndEpisodes(supabase, fetched);
   if ("error" in result) return result;
-
-  // Best-effort episode title/synopsis backfill — never blocks the response.
-  if (mediaType === "anime") await enrichAnimeEpisodes(supabase, result.titleId, malId);
 
   return { titleId: result.titleId };
 }
@@ -339,26 +179,15 @@ export async function refreshCatalogTitle(
   const row = data as TitleLookupRow;
 
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
-  let malId: number | null = null;
-  // Raw AniList title strings for the TMDB anime matcher (lib/tmdbAnimeMatch.ts)
-  // — captured separately from `fetched` since that's typed to the
-  // provider-agnostic shape both branches share.
-  let anilistTitles: { titleEnglish: string | null; titleRomaji: string | null } | null = null;
   try {
     if (row.media_type === "tv" && row.source === "tmdb") {
       // { fresh: true } bypasses TMDB's hour-long HTTP cache (see
       // lib/tmdb.ts) — a refresh exists specifically to see current data.
       fetched = await getTvTitle(row.source_id, { fresh: true });
     } else if (row.media_type === "anime" && row.source === "tmdb") {
-      // Migrated anime (or anything newly added post-migration) — same TMDB
-      // path as tv, just with mediaType: "anime" so absolute_number keeps
-      // getting (re)computed for filler-tag lookups.
+      // Same TMDB path as tv, just with mediaType: "anime" so
+      // absolute_number keeps getting (re)computed for filler-tag lookups.
       fetched = await getTvTitle(row.source_id, { fresh: true, mediaType: "anime" });
-    } else if (row.media_type === "anime" && row.source === "anilist") {
-      const anime = await getAnimeTitle(row.source_id);
-      fetched = anime;
-      malId = anime.malId;
-      anilistTitles = { titleEnglish: anime.titleEnglish, titleRomaji: anime.titleRomaji };
     } else {
       return { error: "Unsupported source/mediaType combination", status: 400 };
     }
@@ -369,22 +198,6 @@ export async function refreshCatalogTitle(
 
   const result = await upsertTitleAndEpisodes(supabase, fetched);
   if ("error" in result) return result;
-
-  // Best-effort episode title/synopsis backfill — never blocks the response.
-  // A refresh (this function) is exactly when this enrichment should run:
-  // it's the point where episode rows for a title get (re)written.
-  if (row.media_type === "anime") {
-    await enrichAnimeEpisodes(supabase, result.titleId, malId);
-    // TMDB enrichment runs alongside Jikan's, not instead — see
-    // enrichAnimeFromTmdb above.
-    if (anilistTitles) {
-      await enrichAnimeFromTmdb(supabase, result.titleId, {
-        titleEnglish: anilistTitles.titleEnglish,
-        titleRomaji: anilistTitles.titleRomaji,
-        title: result.title,
-      });
-    }
-  }
 
   return {
     titleId: result.titleId,

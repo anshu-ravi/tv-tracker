@@ -35,9 +35,9 @@ export interface NormalizedEpisode {
 }
 
 // Creator/cast info for the title detail screen. Fetched on demand straight
-// from the provider (not stored in the DB — see lib/tmdb.ts and
-// lib/anilist.ts), so a missing or malformed credits response should map to
-// empty arrays rather than throw.
+// from the provider (not stored in the DB — see lib/tmdb.ts), so a missing
+// or malformed credits response should map to empty arrays rather than
+// throw.
 export interface TitleCredits {
   creators: string[];
   cast: { name: string; role?: string | null; imageUrl?: string | null }[];
@@ -45,12 +45,11 @@ export interface TitleCredits {
 
 // Live-fetched ratings for the title detail screen (not stored in the DB —
 // see lib/ratings.ts). imdb is a 0-10 decimal, rottenTomatoes an integer
-// percent, anilistScore an integer 0-100; any of them may be null when the
-// source has no rating or the lookup fails.
+// percent; either may be null when the source has no rating or the lookup
+// fails.
 export interface TitleRatings {
   imdb: number | null;
   rottenTomatoes: number | null;
-  anilistScore: number | null;
 }
 
 // A user-created list (or the single implicit Favorites list) for the lists
