@@ -1,12 +1,21 @@
-// Nightly air-date refresh — Supabase Edge Function (Deno)
+// Nightly catalog refresh — Supabase Edge Function (Deno)
 //
 // WHY: `titles.next_episode_air_date` / `titles.next_episode_label` are the
-// source of the "next up" info shown on Home. Providers (TMDB/AniList) are the
-// source of truth for that data, so a nightly job re-queries every *running*
-// title, updates those two columns, and inserts any newly-announced episode
-// rows. This keeps the app's catalog fresh without the browser ever calling
-// TMDB/AniList directly (see CLAUDE.md "Hard rules": provider calls are
-// server-side only).
+// source of the "next up" info shown on Home, and `episodes` needs to reflect
+// every real season TMDB knows about (not just the one with the next airing
+// episode) so newly-announced seasons/episodes show up without a manual
+// refresh. TMDB is the source of truth for both tv and anime — anime was
+// fully migrated off AniList onto TMDB in session 3 (see CLAUDE.md /
+// HANDOFF.md), so this function is TMDB-only. This keeps the app's catalog
+// fresh without the browser ever calling TMDB directly (see CLAUDE.md "Hard
+// rules": provider calls are server-side only).
+//
+// SCOPE: sweeps every title the user is tracking (any row in `user_titles`,
+// regardless of status), not just `is_running = true` titles. Mirrors
+// src/app/api/titles/refresh/route.ts: `completed`/`dnf` titles are included
+// deliberately because a "completed" show can resume airing, and the
+// ended-vs-caught-up badge shown for completed titles depends on
+// `titles.is_running` staying current, not just on watching/watchlist rows.
 //
 // Triggered by: pg_cron (see supabase/migrations/*_schedule_refresh_air_dates.sql),
 // which calls this function nightly via `net.http_post`. Can also be invoked
@@ -26,21 +35,19 @@
 //                                This is a SEPARATE secret store from the app's
 //                                local .env — do not confuse the two.
 //
-// AniList needs no key (public GraphQL API), matching src/lib/anilist.ts.
-//
-// Scope note: to avoid hammering TMDB with a full per-season fetch for every
-// running show every night, we only re-fetch the season that contains the
-// next airing episode (or the latest known season if nothing is scheduled).
-// That's where newly-announced episodes actually show up in practice. AniList
-// already returns its whole `airingSchedule` in one query, so anime titles get
-// full episode-list refresh for free.
+// This is a Deno runtime and cannot import from src/lib/ — the TMDB fetch/
+// normalization logic below is deliberately duplicated from
+// src/lib/tmdb.ts (getTvTitle) and the write path from
+// src/lib/api/catalog.ts (refreshCatalogTitle / upsertTitleAndEpisodes).
+// Each duplicated block below is commented with which src/lib/ function it
+// mirrors — keep them in sync by hand when either changes.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // ---- types mirroring the app's catalog (src/lib/types.ts, snake_case) -------
 
 type MediaType = "tv" | "anime" | "movie";
-type DataSource = "tmdb" | "anilist";
+type DataSource = "tmdb";
 
 interface TitleRow {
   id: string;
@@ -83,11 +90,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// ---- TMDB (tv) ------------------------------------------------------------
+// ---- TMDB (tv + anime — anime is TMDB-sourced too, see CLAUDE.md) ---------
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG_BASE = "https://image.tmdb.org/t/p";
-const RUNNING_TV_STATUSES = ["Returning Series", "In Production", "Planned"];
+const RUNNING_STATUSES = ["Returning Series", "In Production", "Planned"];
 
 function tmdbImg(path: string | null | undefined, size = "w300"): string | null {
   return path ? `${TMDB_IMG_BASE}/${size}${path}` : null;
@@ -126,6 +133,9 @@ interface TmdbEpisode {
   runtime: number | null;
 }
 
+// Mirrors src/lib/tmdb.ts `getTvTitle` — full per-season episode refresh
+// across every real season (not just the one with the next airing episode),
+// plus the anime absolute_number counter. Keep in sync with that function.
 async function refreshTvTitle(
   row: TitleRow,
 ): Promise<{ next: NextEpisodeUpdate; episodes: EpisodeUpsert[]; isRunning: boolean }> {
@@ -140,29 +150,30 @@ async function refreshTvTitle(
       }
     : { next_episode_air_date: null, next_episode_label: null };
 
-  // Only pull the season most likely to contain new/changed episodes: the one
-  // with the next airing episode, or otherwise the latest real season.
+  // Full refresh: every real season (skip specials in season 0), not just the
+  // one containing the next airing episode. This is what let a show's entire
+  // missing season go unnoticed under the old narrow-scope version.
   const realSeasons = tv.seasons.filter(
     (s) => s.season_number > 0 && s.episode_count > 0,
   );
-  const targetSeasonNumber =
-    next?.season_number ??
-    realSeasons.reduce(
-      (max, s) => Math.max(max, s.season_number),
-      0,
-    );
 
   const episodes: EpisodeUpsert[] = [];
-  if (targetSeasonNumber > 0) {
+  // Anime keeps an absolute_number (1..N across all real seasons, broadcast
+  // order) so filler-tag lookups (src/lib/animefillerlist.ts) stay working.
+  // TV titles never had absolute numbering and don't get one here either —
+  // mirrors the `mediaType === "anime"` branch in getTvTitle.
+  let absoluteCounter = 0;
+  for (const s of realSeasons) {
     const seasonData = await tmdbFetch<{ episodes: TmdbEpisode[] }>(
-      `/tv/${row.source_id}/season/${targetSeasonNumber}`,
+      `/tv/${row.source_id}/season/${s.season_number}`,
     );
     for (const e of seasonData.episodes) {
+      absoluteCounter += 1;
       episodes.push({
         title_id: row.id,
         season_number: e.season_number,
         episode_number: e.episode_number,
-        absolute_number: null,
+        absolute_number: row.media_type === "anime" ? absoluteCounter : null,
         name: e.name,
         overview: e.overview,
         air_date: e.air_date || null,
@@ -175,91 +186,7 @@ async function refreshTvTitle(
   return {
     next: nextUpdate,
     episodes,
-    isRunning: RUNNING_TV_STATUSES.includes(tv.status),
-  };
-}
-
-// ---- AniList (anime) --------------------------------------------------------
-
-const ANILIST_ENDPOINT = "https://graphql.anilist.co";
-const RUNNING_ANIME_STATUSES = ["RELEASING", "NOT_YET_RELEASED", "HIATUS"];
-
-const DETAIL_QUERY = `
-query ($id: Int) {
-  Media(id: $id, type: ANIME) {
-    id
-    status
-    episodes
-    nextAiringEpisode { airingAt episode }
-    airingSchedule(perPage: 500) { nodes { episode airingAt } }
-  }
-}`;
-
-interface AniDetailMedia {
-  id: number;
-  status: string;
-  episodes: number | null;
-  nextAiringEpisode: { airingAt: number; episode: number } | null;
-  airingSchedule: { nodes: { episode: number; airingAt: number }[] };
-}
-
-function toIsoDate(unixSeconds: number | null | undefined): string | null {
-  if (!unixSeconds) return null;
-  return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
-}
-
-async function anilistFetch(id: string): Promise<AniDetailMedia> {
-  const res = await fetch(ANILIST_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({ query: DETAIL_QUERY, variables: { id: Number(id) } }),
-  });
-  if (!res.ok) throw new Error(`AniList request failed: ${res.status}`);
-  const json = (await res.json()) as {
-    data?: { Media: AniDetailMedia };
-    errors?: { message: string }[];
-  };
-  if (json.errors?.length) {
-    throw new Error(`AniList error: ${json.errors[0].message}`);
-  }
-  if (!json.data) throw new Error("AniList returned no data");
-  return json.data.Media;
-}
-
-async function refreshAnimeTitle(
-  row: TitleRow,
-): Promise<{ next: NextEpisodeUpdate; episodes: EpisodeUpsert[]; isRunning: boolean }> {
-  const m = await anilistFetch(row.source_id);
-  const next = m.nextAiringEpisode;
-
-  const nextUpdate: NextEpisodeUpdate = next
-    ? {
-        next_episode_air_date: toIsoDate(next.airingAt),
-        next_episode_label: `E${next.episode}`,
-      }
-    : { next_episode_air_date: null, next_episode_label: null };
-
-  // AniList's airingSchedule already covers past + scheduled episodes in one
-  // query, so upsert the whole known schedule (anime is tracked as season 1 +
-  // absolute_number, per CLAUDE.md).
-  const episodes: EpisodeUpsert[] = (m.airingSchedule?.nodes ?? []).map(
-    (node) => ({
-      title_id: row.id,
-      season_number: 1,
-      episode_number: node.episode,
-      absolute_number: node.episode,
-      name: null,
-      overview: null,
-      air_date: toIsoDate(node.airingAt),
-      still_url: null,
-      runtime: null,
-    }),
-  );
-
-  return {
-    next: nextUpdate,
-    episodes,
-    isRunning: RUNNING_ANIME_STATUSES.includes(m.status),
+    isRunning: RUNNING_STATUSES.includes(tv.status),
   };
 }
 
@@ -274,16 +201,11 @@ interface RunSummary {
 
 async function refreshOne(row: TitleRow, summary: RunSummary): Promise<void> {
   try {
-    const result =
-      row.media_type === "tv"
-        ? await refreshTvTitle(row)
-        : row.media_type === "anime"
-          ? await refreshAnimeTitle(row)
-          : null;
-
     // Movies aren't handled by this job (no episodes/next-episode concept yet
     // — schema reserves room per CLAUDE.md, but movies are deferred).
-    if (!result) return;
+    if (row.media_type === "movie") return;
+
+    const result = await refreshTvTitle(row);
 
     const { error: updateError } = await supabase
       .from("titles")
@@ -321,9 +243,57 @@ async function refreshOne(row: TitleRow, summary: RunSummary): Promise<void> {
   }
 }
 
+// Small helper: run `items` through `worker` with at most `limit` in flight
+// at once. Mirrors mapWithConcurrency in src/app/api/titles/refresh/route.ts
+// — modest concurrency (3) so the nightly sweep doesn't hammer TMDB but also
+// doesn't run a potentially large tracked list strictly sequentially.
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  async function runOne(): Promise<void> {
+    while (next < items.length) {
+      const i = next++;
+      await worker(items[i]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, runOne);
+  await Promise.all(workers);
+}
+
+// ---- run logging (refresh_runs) ------------------------------------------
+// Records one row per invocation so the app can show "Last refreshed: ..."
+// (see src/app/(app)/account/page.tsx) and surface whether the last run had
+// errors. See supabase/migrations/*_refresh_runs.sql.
+async function recordRun(
+  startedAt: string,
+  summary: RunSummary,
+  fatalError?: string,
+): Promise<void> {
+  const { error } = await supabase.from("refresh_runs").insert({
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    processed: summary.processed,
+    updated: summary.updated,
+    episodes_upserted: summary.episodesUpserted,
+    error_count: summary.errors.length + (fatalError ? 1 : 0),
+    errors: fatalError
+      ? [...summary.errors, { titleId: null, title: null, message: fatalError }]
+      : summary.errors,
+  });
+  if (error) {
+    // Logging the run must never itself take down the response — the run
+    // already happened; just make sure it's visible in function logs.
+    console.error("Failed to record refresh_runs row:", error.message);
+  }
+}
+
 // ---- entrypoint ---------------------------------------------------------------
 
 Deno.serve(async (_req: Request) => {
+  const startedAt = new Date().toISOString();
   const summary: RunSummary = {
     processed: 0,
     updated: 0,
@@ -331,27 +301,54 @@ Deno.serve(async (_req: Request) => {
     errors: [],
   };
 
-  const { data: rows, error } = await supabase
-    .from("titles")
-    .select("id, source, source_id, media_type, title")
-    .eq("is_running", true)
-    .in("media_type", ["tv", "anime"]);
+  // Sweep every title the user is tracking, any status — mirrors
+  // src/app/api/titles/refresh/route.ts (scope: "tracked"). This is a
+  // single-user app, so `user_titles` has no per-user filter here; every row
+  // belongs to the one owner.
+  const { data: userTitleRows, error: userTitlesError } = await supabase
+    .from("user_titles")
+    .select("title_id");
 
-  if (error) {
-    console.error("Failed to load running titles:", error.message);
+  if (userTitlesError) {
+    console.error("Failed to load tracked titles:", userTitlesError.message);
+    await recordRun(startedAt, summary, userTitlesError.message);
     return new Response(
-      JSON.stringify({ ok: false, error: error.message }),
+      JSON.stringify({ ok: false, error: userTitlesError.message }),
       { status: 500, headers: { "content-type": "application/json" } },
     );
   }
 
-  const titles = (rows ?? []) as TitleRow[];
+  const titleIds = Array.from(
+    new Set(((userTitleRows ?? []) as { title_id: string }[]).map((r) => r.title_id)),
+  );
 
-  // Sequential on purpose: keeps us well under TMDB/AniList rate limits for
-  // what is, in a single-user app, a small number of running titles.
-  for (const row of titles) {
-    await refreshOne(row, summary);
+  if (titleIds.length === 0) {
+    console.log("refresh-air-dates: no tracked titles, nothing to do");
+    await recordRun(startedAt, summary);
+    return new Response(JSON.stringify({ ok: true, ...summary }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }
+
+  const { data: titleRows, error: titlesError } = await supabase
+    .from("titles")
+    .select("id, source, source_id, media_type, title")
+    .in("id", titleIds);
+
+  if (titlesError) {
+    console.error("Failed to load title rows:", titlesError.message);
+    await recordRun(startedAt, summary, titlesError.message);
+    return new Response(
+      JSON.stringify({ ok: false, error: titlesError.message }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    );
+  }
+
+  const titles = (titleRows ?? []) as TitleRow[];
+
+  // Modest concurrency — see mapWithConcurrency above.
+  await mapWithConcurrency(titles, 3, (row) => refreshOne(row, summary));
 
   console.log(
     `refresh-air-dates: processed=${summary.processed} updated=${summary.updated} ` +
@@ -360,6 +357,8 @@ Deno.serve(async (_req: Request) => {
   if (summary.errors.length > 0) {
     console.error("refresh-air-dates errors:", JSON.stringify(summary.errors));
   }
+
+  await recordRun(startedAt, summary);
 
   return new Response(JSON.stringify({ ok: true, ...summary }), {
     status: 200,

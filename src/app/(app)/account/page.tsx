@@ -3,6 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import ProfileEditor from "@/components/ProfileEditor";
 import RefreshTrackedButton from "@/components/RefreshTrackedButton";
+import LastRefreshedTag, {
+  type LastRefreshedRunSummary,
+} from "@/components/LastRefreshedTag";
+
+interface RefreshRunRow {
+  finished_at: string;
+  error_count: number;
+}
 
 // Account screen — profile (display name + avatar, stored in Supabase Auth
 // user_metadata) plus identity + sign out, moved here from the app-shell
@@ -16,6 +24,23 @@ export default async function AccountPage() {
   const displayName: string = user?.user_metadata?.display_name ?? "";
   const avatarUrl: string | null = user?.user_metadata?.avatar_url ?? null;
   const initial = (displayName || user?.email || "?").charAt(0).toUpperCase();
+
+  // Most recent nightly refresh run (supabase/functions/refresh-air-dates),
+  // so the owner can tell at a glance whether the cron job is running — see
+  // supabase/migrations/*_refresh_runs.sql.
+  const { data: latestRun } = await supabase
+    .from("refresh_runs")
+    .select("finished_at, error_count")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const lastRefreshedRun: LastRefreshedRunSummary | null = latestRun
+    ? {
+        finishedAt: (latestRun as RefreshRunRow).finished_at,
+        errorCount: (latestRun as RefreshRunRow).error_count,
+      }
+    : null;
 
   return (
     <div className="px-4 py-6">
@@ -70,6 +95,7 @@ export default async function AccountPage() {
       </div>
 
       <RefreshTrackedButton />
+      <LastRefreshedTag run={lastRefreshedRun} />
 
       <Link
         href="/account/stats"
