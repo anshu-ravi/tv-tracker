@@ -23,6 +23,7 @@ export interface NormalizedTitle {
 export interface NormalizedEpisode {
   seasonNumber: number;
   episodeNumber: number;
+  absoluteNumber: number | null;
   name: string | null;
   overview: string | null;
   airDate: string | null;
@@ -74,7 +75,13 @@ async function tmdbFetch<T>(apiKey: string, path: string): Promise<T> {
 export async function getTvTitle(
   apiKey: string,
   tmdbId: string,
+  // `mediaType` mirrors src/lib/tmdb.ts's getTvTitle: anime is TMDB-sourced
+  // too now, fetched via the same /tv endpoint, but still needs an
+  // absolute_number computed per episode for filler-tag lookups
+  // (src/lib/animefillerlist.ts). Defaults to "tv" for the TV call site.
+  opts: { mediaType?: "tv" | "anime" } = {},
 ): Promise<{ title: NormalizedTitle; episodes: NormalizedEpisode[] }> {
+  const mediaType = opts.mediaType ?? "tv";
   const tv = await tmdbFetch<TmdbTv>(apiKey, `/tv/${tmdbId}`);
   const next = tv.next_episode_to_air;
 
@@ -93,15 +100,21 @@ export async function getTvTitle(
 
   const seasons = tv.seasons.filter((s) => s.season_number > 0 && s.episode_count > 0);
   const episodes: NormalizedEpisode[] = [];
+  // Anime keeps an absolute_number (1..N across all real seasons, broadcast
+  // order) — only advances/is used when mediaType is "anime", same as
+  // src/lib/tmdb.ts's getTvTitle.
+  let absoluteCounter = 0;
   for (const s of seasons) {
     const sd = await tmdbFetch<{ episodes: TmdbEpisode[] }>(
       apiKey,
       `/tv/${tmdbId}/season/${s.season_number}`,
     );
     for (const e of sd.episodes) {
+      absoluteCounter += 1;
       episodes.push({
         seasonNumber: e.season_number,
         episodeNumber: e.episode_number,
+        absoluteNumber: mediaType === "anime" ? absoluteCounter : null,
         name: e.name,
         overview: e.overview,
         airDate: e.air_date || null,
