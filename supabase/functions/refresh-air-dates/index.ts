@@ -10,19 +10,36 @@
 // fresh without the browser ever calling TMDB directly (see CLAUDE.md "Hard
 // rules": provider calls are server-side only).
 //
-// SCOPE: sweeps every title the user is tracking (any row in `user_titles`,
-// regardless of status), not just `is_running = true` titles. Mirrors
-// src/app/api/titles/refresh/route.ts: `completed`/`dnf` titles are included
-// deliberately because a "completed" show can resume airing, and the
-// ended-vs-caught-up badge shown for completed titles depends on
-// `titles.is_running` staying current, not just on watching/watchlist rows.
+// SCOPE: driven by the JSON request body, `{"scope": "running" | "all"}`.
+//   - "running" — only titles where `titles.is_running = true`. Scheduled
+//     nightly: `is_running` is exactly the property that means "something
+//     about this title can still change," so this is the cheap, frequent
+//     sweep.
+//   - "all" — every title in `user_titles`, regardless of status. Scheduled
+//     weekly. This is what keeps `is_running` itself honest — a show that
+//     quietly resumes would otherwise never re-enter the nightly set. Also
+//     mirrors src/app/api/titles/refresh/route.ts: `completed`/`dnf` titles
+//     are included deliberately because a "completed" show can resume
+//     airing, and the ended-vs-caught-up badge shown for completed titles
+//     depends on `titles.is_running` staying current, not just on
+//     watching/watchlist rows.
+// Both scopes stay restricted to titles the owner actually tracks (joined to
+// `user_titles`) — never the whole `titles` catalog.
+//
+// The default when the body is empty, absent, or unparseable is "all" — the
+// currently-scheduled cron jobs always post a body, but a manual `curl` often
+// doesn't, and defaulting to the wider sweep fails safe. An unrecognised
+// scope value is rejected with 400 rather than silently treated as "all", so
+// a typo in a cron body is loud, not a silently halved job.
 //
 // Triggered by: pg_cron (see supabase/migrations/*_schedule_refresh_air_dates.sql),
-// which calls this function nightly via `net.http_post`. Can also be invoked
-// manually for testing:
+// which calls this function nightly and weekly via `net.http_post`. Can also
+// be invoked manually for testing:
 //   curl -i --location --request POST \
 //     'https://<project-ref>.supabase.co/functions/v1/refresh-air-dates' \
-//     --header 'Authorization: Bearer <SERVICE_ROLE_KEY>'
+//     --header 'Authorization: Bearer <SERVICE_ROLE_KEY>' \
+//     --header 'Content-Type: application/json' \
+//     --data '{"scope":"running"}'
 //
 // Required environment variables (Edge Function secrets):
 //   SUPABASE_URL              — auto-provided by the Edge Function runtime.
@@ -48,6 +65,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 type MediaType = "tv" | "anime" | "movie";
 type DataSource = "tmdb";
+type Scope = "running" | "all";
 
 interface TitleRow {
   id: string;
@@ -268,11 +286,13 @@ async function mapWithConcurrency<T>(
 // (see src/app/(app)/account/page.tsx) and surface whether the last run had
 // errors. See supabase/migrations/*_refresh_runs.sql.
 async function recordRun(
+  scope: Scope,
   startedAt: string,
   summary: RunSummary,
   fatalError?: string,
 ): Promise<void> {
   const { error } = await supabase.from("refresh_runs").insert({
+    scope,
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     processed: summary.processed,
@@ -292,7 +312,50 @@ async function recordRun(
 
 // ---- entrypoint ---------------------------------------------------------------
 
-Deno.serve(async (_req: Request) => {
+// Parses the request body into a scope. Empty/absent/unparseable body ->
+// "all" (fail safe — the wider sweep). An explicit but unrecognised scope
+// value returns null so the caller can reject it with 400 rather than
+// silently running "all".
+async function parseScope(req: Request): Promise<Scope | null> {
+  let raw: string;
+  try {
+    raw = await req.text();
+  } catch {
+    return "all";
+  }
+  if (!raw || raw.trim().length === 0) return "all";
+
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return "all";
+  }
+
+  if (
+    body === null ||
+    typeof body !== "object" ||
+    !("scope" in body) ||
+    (body as { scope?: unknown }).scope === undefined
+  ) {
+    return "all";
+  }
+
+  const value = (body as { scope?: unknown }).scope;
+  if (value === "running" || value === "all") return value;
+  return null; // explicit but unrecognised — reject, don't default
+}
+
+Deno.serve(async (req: Request) => {
+  const scope = await parseScope(req);
+
+  if (scope === null) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "invalid scope: must be \"running\" or \"all\"" }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+  }
+
   const startedAt = new Date().toISOString();
   const summary: RunSummary = {
     processed: 0,
@@ -311,7 +374,7 @@ Deno.serve(async (_req: Request) => {
 
   if (userTitlesError) {
     console.error("Failed to load tracked titles:", userTitlesError.message);
-    await recordRun(startedAt, summary, userTitlesError.message);
+    await recordRun(scope, startedAt, summary, userTitlesError.message);
     return new Response(
       JSON.stringify({ ok: false, error: userTitlesError.message }),
       { status: 500, headers: { "content-type": "application/json" } },
@@ -323,22 +386,29 @@ Deno.serve(async (_req: Request) => {
   );
 
   if (titleIds.length === 0) {
-    console.log("refresh-air-dates: no tracked titles, nothing to do");
-    await recordRun(startedAt, summary);
-    return new Response(JSON.stringify({ ok: true, ...summary }), {
+    console.log(`refresh-air-dates: scope=${scope} no tracked titles, nothing to do`);
+    await recordRun(scope, startedAt, summary);
+    return new Response(JSON.stringify({ ok: true, scope, ...summary }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
   }
 
-  const { data: titleRows, error: titlesError } = await supabase
+  // "running" scope narrows to titles.is_running = true; "all" sweeps every
+  // tracked title. Both stay joined to user_titles via titleIds above — never
+  // the whole titles catalog.
+  let titlesQuery = supabase
     .from("titles")
     .select("id, source, source_id, media_type, title")
     .in("id", titleIds);
+  if (scope === "running") {
+    titlesQuery = titlesQuery.eq("is_running", true);
+  }
+  const { data: titleRows, error: titlesError } = await titlesQuery;
 
   if (titlesError) {
     console.error("Failed to load title rows:", titlesError.message);
-    await recordRun(startedAt, summary, titlesError.message);
+    await recordRun(scope, startedAt, summary, titlesError.message);
     return new Response(
       JSON.stringify({ ok: false, error: titlesError.message }),
       { status: 500, headers: { "content-type": "application/json" } },
@@ -351,16 +421,16 @@ Deno.serve(async (_req: Request) => {
   await mapWithConcurrency(titles, 3, (row) => refreshOne(row, summary));
 
   console.log(
-    `refresh-air-dates: processed=${summary.processed} updated=${summary.updated} ` +
+    `refresh-air-dates: scope=${scope} processed=${summary.processed} updated=${summary.updated} ` +
       `episodesUpserted=${summary.episodesUpserted} errors=${summary.errors.length}`,
   );
   if (summary.errors.length > 0) {
     console.error("refresh-air-dates errors:", JSON.stringify(summary.errors));
   }
 
-  await recordRun(startedAt, summary);
+  await recordRun(scope, startedAt, summary);
 
-  return new Response(JSON.stringify({ ok: true, ...summary }), {
+  return new Response(JSON.stringify({ ok: true, scope, ...summary }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
