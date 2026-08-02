@@ -83,10 +83,13 @@ describe("POST /api/titles", () => {
       createFakeSupabase({ user: { id: "user-1" } }),
     );
 
+    // tv and anime are both TMDB-only (AniList has been retired — see
+    // classifyTmdbSearchResult in lib/tmdb.ts); movies have no provider
+    // client yet, so this combination is genuinely unsupported.
     const response = await callPost({
       source: "tmdb",
       sourceId: "42",
-      mediaType: "anime",
+      mediaType: "movie",
       status: "watching",
     });
 
@@ -205,8 +208,8 @@ describe("POST /api/titles", () => {
       (c) => c.method === "upsert",
     );
     expect(watchedUpsert?.args[0]).toEqual([
-      { episode_id: "ep-1", title_id: "title-1" },
-      { episode_id: "ep-2", title_id: "title-1" },
+      { episode_id: "ep-1", title_id: "title-1", watched_at: null },
+      { episode_id: "ep-2", title_id: "title-1", watched_at: null },
     ]);
   });
 

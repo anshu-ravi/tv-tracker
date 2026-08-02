@@ -100,8 +100,8 @@ describe("PATCH /api/titles/:titleId/status", () => {
       (c) => c.method === "upsert",
     );
     expect(watchedUpsert?.args[0]).toEqual([
-      { episode_id: "ep-1", title_id: "title-1" },
-      { episode_id: "ep-2", title_id: "title-1" },
+      { episode_id: "ep-1", title_id: "title-1", watched_at: null },
+      { episode_id: "ep-2", title_id: "title-1", watched_at: null },
     ]);
     expect(watchedUpsert?.args[1]).toEqual({
       onConflict: "user_id,episode_id",
