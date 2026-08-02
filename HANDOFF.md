@@ -17,7 +17,7 @@ edit your profile, and view stats.
 **Anime is TMDB-sourced with real seasons** (session 3). See "Anime → TMDB
 migration" below.
 
-### Session-4 changes (on `feat/session-4-fixes`, not yet merged)
+### Session-4 changes (merged to `main` via `feat/session-4-fixes`)
 
 - **Catch Up now means "you haven't touched this in 30 days"**, not "the next
   unwatched episode is old". The old air-date rule pinned Bleach in Catch Up
@@ -50,8 +50,10 @@ migration" below.
 - **Home greeting** — display-name eyebrow above the HOME wordmark.
 - **Refresh scope** — the tracked sweep covers *every* status. It previously
   skipped `completed`, which is the only status that renders the
-  ended-vs-caught-up badge, so that badge was stale by construction (this is
-  why Solo Leveling read "Ended"). The standalone script separately still gated
+  ended-vs-caught-up badge, so that badge was stale by construction. (This was
+  investigated as the cause of Solo Leveling reading "Ended". It was **not** —
+  see "Closed" below — but the sweep gap was a real bug regardless.) The
+  standalone script separately still gated
   anime on `source='anilist'` and skipped all 30 anime; it now takes the TMDB
   path, and its local TMDB client gained `absoluteNumber` (without which a
   refresh would strip the numbering filler lookups depend on).
@@ -187,36 +189,91 @@ API — drop when comfortable):
 
 ## Resume list (open items)
 
-1. ~~**Dan Da Dan is incomplete.**~~ Done — the owner ran the sweep; it now has
-   all 24 episode rows. Re-run it after the session-4 script fix to pick up the
-   30 anime that were being skipped:
-   ```bash
-   TARGET_USER_ID=0d6f5608-4025-47bd-9f69-18c6d5f762bb npx tsx scripts/refresh-catalog/refresh.ts
-   ```
-   Solo Leveling's stale `is_running = false` clears on that run.
-1a. **The test suite has rotted and needs its own branch.** `npx vitest run` is
-   **8 failing / 77 passing**, and all 8 predate session 4 (verified by stashing
-   the branch and re-running against `main`). They are: 4 assertions in
-   `tests/api/search.test.ts` covering a TMDB+AniList search merge the route no
-   longer implements, 2 in `tests/api/titles*.test.ts` (`watched_at`, a stale
-   400-vs-500 expectation), and `tests/lib/tmdb.test.ts` `absoluteNumber`
-   snapshots left over from the session-3 migration. Until these are fixed the
-   suite cannot tell you whether a change broke something. Also: **CLAUDE.md
-   still says "no test runner configured yet"**, two sessions stale.
-2. **Deploy the nightly cron.** More valuable now that anime and TV share one
-   refresh path — and worth **rescoping it to call `refreshCatalogTitle` for
-   tracked titles** rather than its current narrow "only the season containing
-   the next airing episode" refresh, which is the assumption that let Devil May
-   Cry's missing season 2 go unnoticed. Blocked on the owner:
-   `supabase secrets set TMDB_API_KEY=…` (Edge Function secrets are a separate
-   store from `.env`), and the Vault-backed service-role key so it never lands in
-   git. See that function's README.
-3. ~~**Retire AniList.**~~ Done — `src/lib/anilist.ts` and `src/lib/jikan.ts`
-   deleted along with every live-code reference (the `anilist` `data_source`
-   enum value stays in Postgres; it's harmless and dropping it is destructive).
-4. **Drop the backup tables** listed above once the migration has proven itself.
-5. **Search "Explore"** (low priority) — TMDB trending/popular before the user types.
-6. **Polish** — plain `<img>` LCP warnings; movies still deferred.
+_Ordered as suggested next steps. Items 1–2 are small, unblocked, and make every
+later session safer — start there._
+
+### 0. Push `main` — do this first
+
+At the end of session 4 there were **9 unpushed commits on `main`**, including
+the session-4 merge. Nothing was pushed because that's the outward-facing step
+and the owner hadn't asked. Check `git log origin/main..main` before anything
+else; if it's non-empty, that's why.
+
+### 1. Repair the test suite (own branch: `fix/test-suite`)
+
+`npx vitest run` is **8 failing / 77 passing**. All 8 predate session 4 —
+verified by stashing the branch and re-running against `main` (baseline was
+10 failing / 71 passing). Breakdown:
+
+- `tests/api/search.test.ts` — 4 assertions covering a TMDB+AniList search
+  merge that `src/app/api/search/route.ts` **no longer implements** (it only
+  calls `searchTv`). The test encodes intent the app has abandoned; rewriting
+  it means deciding what search *should* assert now, which is why it wasn't
+  folded into session 4.
+- `tests/api/titles.test.ts` / `titles-status.test.ts` — 2 failures: a
+  `watched_at` field expectation and a stale 400-vs-500 status assertion.
+- `tests/lib/tmdb.test.ts` — `absoluteNumber` snapshot mismatches left over
+  from the session-3 anime migration (the field was added; snapshots weren't).
+
+**Why this matters more than it looks:** with 8 known-red tests, a run can no
+longer tell you whether *your* change broke something — session 4 had to
+establish a stash-and-compare baseline by hand to prove it introduced no
+regressions. That's not repeatable.
+
+### 2. Fix stale docs in `CLAUDE.md`
+
+It still says **"There is no test runner configured yet"** — untrue for two
+sessions (`vitest.config.mts` + `tests/`). It also still lists AniList as a data
+provider and describes `lib/anilist.ts` in the data layer, both retired in
+session 4. This is the file every session reads first, so its errors propagate.
+
+### 3. Deploy the nightly cron (blocked on the owner)
+
+`supabase/functions/refresh-air-dates/` (Deno) + a pg_cron migration, authored
+in session 3, **nothing live**. Worth **rescoping it to call
+`refreshCatalogTitle` for tracked titles** rather than its current narrow "only
+the season containing the next airing episode" refresh — that narrow assumption
+is what let Devil May Cry's missing season 2 go unnoticed. Now that TV and anime
+share one refresh path, this is simpler than when it was written.
+
+Blocked on two things only the owner can do:
+`supabase secrets set TMDB_API_KEY=…` (Edge Function secrets are a **separate
+store** from `.env`) and the Vault-backed service-role key so it never lands in
+git. See that function's README.
+
+### 4. Drop the backup tables (owner's call)
+
+`_backup_anime_migration_20260801_174512_{titles,episodes}` and
+`_backup_orphan_bleach_20260801_{titles,episodes}`. The owner wants to decide
+when — don't drop them unprompted.
+
+### 5. Low priority
+
+- **Search "Explore"** — TMDB trending/popular before the user types. The owner
+  explicitly wants this tackled last.
+- **Polish** — 16 `<img>` LCP warnings, 2 pre-existing lint errors in
+  `scripts/trakt-import/lib/build-plan.ts`, movies still deferred.
+
+## Closed — do not reopen without a fresh brief
+
+- **Avatar icon picker.** A 26-icon bundled-SVG picker replacing photo upload
+  was fully built and reviewed in session 4; the owner rejected it on sight and
+  the commit was dropped from the branch. **Photo upload is unchanged and
+  still live.** This was tried and turned down, not left unfinished.
+- **Solo Leveling shows "Ended".** Not a bug in this app. After the session-4
+  refresh-scope fix the row *was* re-fetched (confirmed by `updated_at`), and
+  `is_running` is still `false` because **TMDB itself** reports the show as
+  Ended with only one season of 25 episodes. Our data matches TMDB exactly. The
+  earlier "stale value" diagnosis was wrong. Options if it ever matters: edit
+  TMDB (crowdsourced, fixes the root cause), or add an `is_running_override`
+  column on `titles` (precedent: `tmdb_match_*`) — judged not worth a migration
+  for one title. Note the same upstream gap means its episode list is likely
+  incomplete too, and refreshing can't fix that.
+- **Fire Force S3 and Dan Da Dan filler tags.** animefillerlist has not
+  published the data (Fire Force's page stops at episode 48; Dan Da Dan has 3
+  of 24 classified). Not fixable by us — they now render a quiet dash meaning
+  "no classification available" rather than a blank. Same for Bleach TYBW
+  beyond its episode 40 (our absolute 407–416).
 
 ## How to run / verify
 
