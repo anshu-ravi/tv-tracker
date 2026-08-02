@@ -70,6 +70,15 @@ export default async function BucketedGridPage({
     });
   }
 
+  // Only the first bucket section that actually has titles renders anything
+  // above the fold — an earlier empty bucket ("Nothing here yet.") takes up
+  // little vertical space but a later bucket's grid never reaches the top
+  // of the viewport, so priority must land on exactly one section's first
+  // row, not every section that happens to start a 3-col grid.
+  const firstNonEmptyStatus = BUCKET_ORDER.find(
+    (bucket) => titlesByStatus[bucket.status].length > 0,
+  )?.status;
+
   return (
     <div className="pb-6">
       <h1 className="display px-4 pt-4 text-2xl">{heading}</h1>
@@ -79,6 +88,7 @@ export default async function BucketedGridPage({
           label={bucket.label}
           status={bucket.status}
           titles={titlesByStatus[bucket.status]}
+          isFirstSection={bucket.status === firstNonEmptyStatus}
         />
       ))}
     </div>

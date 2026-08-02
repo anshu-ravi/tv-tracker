@@ -13,9 +13,14 @@ import PosterCard, { type PosterCardTitle } from "@/components/PosterCard";
 export default function WatchlistCarousel({
   heading,
   titles,
+  isFirstSection = false,
 }: {
   heading: string;
   titles: PosterCardTitle[];
+  // True only for the first non-empty carousel on the page (TV vs Anime) —
+  // ~2.2 cards of that one carousel sit above the fold; a second carousel
+  // further down the page never does, even though it's the same layout.
+  isFirstSection?: boolean;
 }) {
   if (titles.length === 0) return null;
 
@@ -40,7 +45,11 @@ export default function WatchlistCarousel({
             whileHover={{ y: -4 }}
             whileTap={{ scale: 0.97 }}
           >
-            <PosterCard title={title} status="watchlist" />
+            <PosterCard
+              title={title}
+              status="watchlist"
+              priority={isFirstSection && i < 2}
+            />
           </motion.div>
         ))}
       </div>

@@ -24,11 +24,13 @@ export default function SearchResultCard({
   existingStatus,
   existingTitleId,
   onAdded,
+  priority = false,
 }: {
   result: SearchResult;
   existingStatus?: WatchStatus;
   existingTitleId?: string;
   onAdded: () => void;
+  priority?: boolean;
 }) {
   const [status, setStatus] = useState<WatchStatus>(existingStatus ?? "watchlist");
   const [pending, setPending] = useState(false);
@@ -73,6 +75,7 @@ export default function SearchResultCard({
       fill
       sizes="(max-width: 640px) 33vw, 200px"
       className="object-cover"
+      priority={priority}
     />
   ) : (
     <div className="flex h-full w-full items-center justify-center p-2 text-center">

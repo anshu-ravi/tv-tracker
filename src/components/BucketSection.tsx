@@ -8,10 +8,16 @@ export default function BucketSection({
   label,
   status,
   titles,
+  isFirstSection = false,
 }: {
   label: string;
   status: WatchStatus;
   titles: PosterCardTitle[];
+  // True only for the first non-empty bucket section on the page — that
+  // section's opening row is the one actually above the fold. Sections
+  // further down (even though each starts its own 3-col grid) are not, so
+  // this must come from the page, not from `titles.length > 0` here.
+  isFirstSection?: boolean;
 }) {
   const muted = status === "dnf";
 
@@ -28,12 +34,13 @@ export default function BucketSection({
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-2">
-          {titles.map((title) => (
+          {titles.map((title, index) => (
             <PosterCard
               key={title.id}
               title={title}
               muted={muted}
               status={status}
+              priority={isFirstSection && index < 3}
             />
           ))}
         </div>

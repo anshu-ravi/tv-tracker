@@ -82,7 +82,7 @@ export default function HomeTabs({
             {upNext.length > 0 && (
               <div className="flex flex-col gap-5">
                 <h2 className="stamp w-fit text-xs">Up Next</h2>
-                {upNext.map((card) => (
+                {upNext.map((card, index) => (
                   // Keyed on the mutable fields, not just titleId: when a mark
                   // triggers router.refresh() and fresh props arrive, the key
                   // changes and React remounts the card instead of carrying over
@@ -90,6 +90,7 @@ export default function HomeTabs({
                   <WatchingCard
                     key={`${card.titleId}:${card.watchedCount}:${card.nextUnwatchedEpisodeId ?? "none"}`}
                     data={card}
+                    priority={index === 0}
                   />
                 ))}
               </div>
@@ -98,7 +99,7 @@ export default function HomeTabs({
             {catchUp.length > 0 && (
               <div className="flex flex-col gap-3">
                 <h2 className="stamp w-fit text-xs">Catch Up</h2>
-                <CatchUpCarousel items={catchUp} />
+                <CatchUpCarousel items={catchUp} isFirstSection={upNext.length === 0} />
               </div>
             )}
           </div>

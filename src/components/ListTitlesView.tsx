@@ -57,8 +57,17 @@ export default function ListTitlesView({
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-2">
-          {filtered.map((title) => (
-            <ListTitleCard key={title.id} listId={listId} title={title} />
+          {filtered.map((title, index) => (
+            <ListTitleCard
+              key={title.id}
+              listId={listId}
+              title={title}
+              // Only the first row (3-col grid) is above the fold on a
+              // phone, and only on the initial "All" view — once the user
+              // taps a filter it's a post-load interaction, not the page's
+              // LCP candidate.
+              priority={filter === "all" && index < 3}
+            />
           ))}
         </div>
       )}

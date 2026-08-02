@@ -57,8 +57,16 @@ export default async function WatchlistPage() {
         </p>
       ) : (
         <>
-          <WatchlistCarousel heading="TV" titles={tvTitles} />
-          <WatchlistCarousel heading="Anime" titles={animeTitles} />
+          <WatchlistCarousel
+            heading="TV"
+            titles={tvTitles}
+            isFirstSection={tvTitles.length > 0}
+          />
+          <WatchlistCarousel
+            heading="Anime"
+            titles={animeTitles}
+            isFirstSection={tvTitles.length === 0 && animeTitles.length > 0}
+          />
         </>
       )}
     </div>
