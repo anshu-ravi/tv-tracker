@@ -3,15 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeSupabase } from "../helpers/fakeSupabase";
 import type { SearchResult } from "@/lib/types";
 
-const { mockCreateClient, mockSearchTv, mockSearchAnime } = vi.hoisted(() => ({
+const { mockCreateClient, mockSearchTv } = vi.hoisted(() => ({
   mockCreateClient: vi.fn(),
   mockSearchTv: vi.fn(),
-  mockSearchAnime: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mockCreateClient }));
 vi.mock("@/lib/tmdb", () => ({ searchTv: mockSearchTv }));
-vi.mock("@/lib/anilist", () => ({ searchAnime: mockSearchAnime }));
 
 const tvResult: SearchResult = {
   source: "tmdb",
@@ -23,8 +21,12 @@ const tvResult: SearchResult = {
   overview: null,
 };
 
+// searchTv() itself classifies each raw TMDB result as "tv" or "anime" (see
+// classifyTmdbSearchResult in lib/tmdb.ts) before the route ever sees it —
+// AniList has been fully retired, so the route's only job is to call
+// searchTv, handle empty queries, and swallow provider errors.
 const animeResult: SearchResult = {
-  source: "anilist",
+  source: "tmdb",
   sourceId: "2",
   mediaType: "anime",
   title: "Anime Show",
@@ -37,8 +39,7 @@ beforeEach(() => {
   mockCreateClient.mockResolvedValue(
     createFakeSupabase({ user: { id: "user-1" } }),
   );
-  mockSearchTv.mockResolvedValue([tvResult]);
-  mockSearchAnime.mockResolvedValue([animeResult]);
+  mockSearchTv.mockResolvedValue([tvResult, animeResult]);
 });
 
 afterEach(() => {
@@ -62,90 +63,46 @@ describe("GET /api/search", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns [] for a blank query without calling either provider", async () => {
+  it("returns [] for a blank query without calling TMDB", async () => {
     const response = await callSearch("   ");
     const body = await response.json();
 
     expect(body).toEqual({ results: [] });
     expect(mockSearchTv).not.toHaveBeenCalled();
-    expect(mockSearchAnime).not.toHaveBeenCalled();
   });
 
-  it("merges TMDB and AniList results, AniList first", async () => {
+  it("returns [] for an empty query without calling TMDB", async () => {
+    const response = await callSearch("");
+    const body = await response.json();
+
+    expect(body).toEqual({ results: [] });
+    expect(mockSearchTv).not.toHaveBeenCalled();
+  });
+
+  it("returns TMDB's results as-is, tv and anime mixed together", async () => {
     const response = await callSearch("show");
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.results).toEqual([animeResult, tvResult]);
+    expect(mockSearchTv).toHaveBeenCalledWith("show");
+    // The route trusts searchTv's classification and ordering — it does not
+    // reorder, dedupe, or otherwise post-process the results.
+    expect(body.results).toEqual([tvResult, animeResult]);
   });
 
-  it("still returns 200 with the other provider's results if one rejects", async () => {
+  it("trims surrounding whitespace before querying TMDB", async () => {
+    await callSearch("  show  ");
+
+    expect(mockSearchTv).toHaveBeenCalledWith("show");
+  });
+
+  it("returns 200 with an empty results array when TMDB throws", async () => {
     mockSearchTv.mockRejectedValue(new Error("TMDB is down"));
 
     const response = await callSearch("show");
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.results).toEqual([animeResult]);
-  });
-
-  it("drops the TMDB duplicate when the same title exists on AniList, keeping AniList first", async () => {
-    const tvDuplicate: SearchResult = {
-      source: "tmdb",
-      sourceId: "10",
-      mediaType: "tv",
-      title: "Attack on Titan!",
-      year: 2013,
-      posterUrl: null,
-      overview: null,
-    };
-    const animeMatch: SearchResult = {
-      source: "anilist",
-      sourceId: "20",
-      mediaType: "anime",
-      title: "attack on   titan",
-      year: 2013,
-      posterUrl: null,
-      overview: null,
-    };
-    mockSearchTv.mockResolvedValue([tvResult, tvDuplicate]);
-    mockSearchAnime.mockResolvedValue([animeMatch]);
-
-    const response = await callSearch("attack on titan");
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    // animeMatch first (preferred), then the surviving tv result — the
-    // near-duplicate tv title is gone entirely.
-    expect(body.results).toEqual([animeMatch, tvResult]);
-  });
-
-  it("does not dedupe titles that merely look similar (no exact normalized match)", async () => {
-    const tvSimilar: SearchResult = {
-      source: "tmdb",
-      sourceId: "11",
-      mediaType: "tv",
-      title: "Attack on Titan: Junior High",
-      year: 2015,
-      posterUrl: null,
-      overview: null,
-    };
-    const animeMatch: SearchResult = {
-      source: "anilist",
-      sourceId: "21",
-      mediaType: "anime",
-      title: "Attack on Titan",
-      year: 2013,
-      posterUrl: null,
-      overview: null,
-    };
-    mockSearchTv.mockResolvedValue([tvSimilar]);
-    mockSearchAnime.mockResolvedValue([animeMatch]);
-
-    const response = await callSearch("attack on titan");
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.results).toEqual([animeMatch, tvSimilar]);
+    expect(body.results).toEqual([]);
   });
 });
