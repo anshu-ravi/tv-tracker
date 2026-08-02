@@ -107,7 +107,9 @@ export default async function AccountPage() {
       </div>
 
       <RefreshTrackedButton />
-      <LastRefreshedTag runningRun={lastRunningRun} allRun={lastAllRun} />
+      <div className="-mt-2 px-1">
+        <LastRefreshedTag runningRun={lastRunningRun} allRun={lastAllRun} />
+      </div>
 
       <Link
         href="/account/stats"

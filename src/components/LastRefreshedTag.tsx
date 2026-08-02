@@ -5,16 +5,25 @@ export interface LastRefreshedRunSummary {
   errorCount: number;
 }
 
-// "Last refreshed" tag for the Account tab — shows when the refresh-air-dates
-// Edge Function (supabase/functions/refresh-air-dates) last ran each scope,
-// so the owner can tell at a glance whether both cron jobs are actually
-// firing. Reads the most recent supabase/migrations/*_refresh_runs.sql row
-// per scope, passed down from the server component.
+// "Last refreshed" footnote for the Account tab's "Refresh tracked shows"
+// card — shows when the refresh-air-dates Edge Function
+// (supabase/functions/refresh-air-dates) last ran each scope, so the owner
+// can tell at a glance whether both cron jobs are actually firing. Reads the
+// most recent supabase/migrations/*_refresh_runs.sql row per scope, passed
+// down from the server component.
 //
 // Two schedules (nightly "running", weekly "all") mean a single "last
 // refreshed" reading is ambiguous — a fresh nightly row says nothing about
 // whether the weekly full sweep is healthy. Both are surfaced, each labeled
 // with its scope, rather than picking one.
+//
+// This is quiet, secondary metadata — a passive "when did the robot last
+// run" readout, not a primary action. It intentionally avoids the rotated
+// `.stamp` treatment and the acid-green accent color used elsewhere on this
+// screen (Save profile, View your stats): spending the accent on a passive
+// timestamp would devalue it. The one exception is a failing run
+// (error_count > 0), which stays visually loud so a silently-broken weekly
+// sweep can't hide behind healthy-looking styling.
 //
 // A client component because the timestamps must render in the viewer's
 // local time — server-rendering them would bake in the server's timezone
@@ -25,10 +34,18 @@ export interface LastRefreshedRunSummary {
 // covers the lines where the server's placeholder render and the client's
 // locale-formatted render legitimately differ.
 function formatRun(run: LastRefreshedRunSummary): { label: string; hasErrors: boolean } {
-  const label = new Date(run.finishedAt).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const date = new Date(run.finishedAt);
+  const label = date
+    .toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    // Some locales insert "at" between date and time (e.g. "2 Aug at 13:13");
+    // drop it to keep this a single tight fragment.
+    .replace(" at ", ", ");
   return { label, hasErrors: run.errorCount > 0 };
 }
 
@@ -41,14 +58,14 @@ export default function LastRefreshedTag({
 }) {
   if (!runningRun && !allRun) {
     return (
-      <div className="stamp mt-3 self-start text-[11px]">
+      <p className="mt-1.5 text-[10px] uppercase tracking-wide text-ink-soft">
         Not refreshed yet
-      </div>
+      </p>
     );
   }
 
   return (
-    <div className="mt-3 flex flex-col items-start gap-1.5">
+    <div className="mt-1.5 flex flex-col gap-0.5">
       <RunLine scopeLabel="Nightly" run={runningRun} />
       <RunLine scopeLabel="Weekly" run={allRun} />
     </div>
@@ -64,22 +81,30 @@ function RunLine({
 }) {
   if (!run) {
     return (
-      <div className="stamp self-start text-[11px]">
+      <p className="text-[10px] uppercase tracking-wide text-ink-soft">
         {scopeLabel}: not refreshed yet
-      </div>
+      </p>
     );
   }
 
   const { label, hasErrors } = formatRun(run);
 
   return (
-    <div className="stamp self-start text-[11px]" suppressHydrationWarning>
+    <p
+      className={
+        hasErrors
+          ? "text-[10px] font-bold uppercase tracking-wide text-red-600"
+          : "text-[10px] uppercase tracking-wide text-ink-soft"
+      }
+      suppressHydrationWarning
+    >
       {scopeLabel}: {label}
       {hasErrors && (
-        <span className="ml-1 text-red-600">
+        <>
+          {" "}
           — {run.errorCount} error{run.errorCount === 1 ? "" : "s"}
-        </span>
+        </>
       )}
-    </div>
+    </p>
   );
 }
