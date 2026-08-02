@@ -152,6 +152,72 @@ export async function searchTv(query: string): Promise<SearchResult[]> {
   }));
 }
 
+// Explore rails on the Search screen (shown before the owner types anything).
+// TMDB's `/trending/tv/week` mixes tv and anime together and skews heavily
+// non-anime, so it's classified and split the same way searchTv() classifies
+// its results, then the anime side is topped up with a dedicated
+// `/discover/tv` query (Animation genre + Japanese origin country) so that
+// rail isn't left thin. Cached for 6 hours (well past the default 1hr
+// metadata cache) since "trending this week" barely moves hour to hour.
+const TRENDING_REVALIDATE_SECONDS = 60 * 60 * 6;
+
+export async function getTrending(): Promise<{
+  tv: SearchResult[];
+  anime: SearchResult[];
+}> {
+  const toResult = (r: TmdbSearchTvResult): SearchResult => ({
+    source: "tmdb",
+    sourceId: String(r.id),
+    mediaType: classifyTmdbSearchResult(r),
+    title: r.name,
+    year: r.first_air_date ? Number(r.first_air_date.slice(0, 4)) : null,
+    posterUrl: img(r.poster_path),
+    overview: r.overview,
+  });
+
+  const url = new URL(BASE + "/trending/tv/week");
+  const res = await fetch(url, {
+    headers: authHeaders(),
+    next: { revalidate: TRENDING_REVALIDATE_SECONDS },
+  });
+  if (!res.ok) throw new Error(`TMDB /trending/tv/week failed: ${res.status}`);
+  const trending = (await res.json()) as { results: TmdbSearchTvResult[] };
+
+  const tv: SearchResult[] = [];
+  const animeFromTrending: SearchResult[] = [];
+  for (const r of trending.results) {
+    const result = toResult(r);
+    if (result.mediaType === "anime") animeFromTrending.push(result);
+    else tv.push(result);
+  }
+
+  const discoverUrl = new URL(BASE + "/discover/tv");
+  discoverUrl.searchParams.set("with_genres", String(ANIMATION_GENRE_ID));
+  discoverUrl.searchParams.set("with_origin_country", "JP");
+  discoverUrl.searchParams.set("sort_by", "popularity.desc");
+  const discoverRes = await fetch(discoverUrl, {
+    headers: authHeaders(),
+    next: { revalidate: TRENDING_REVALIDATE_SECONDS },
+  });
+  if (!discoverRes.ok) {
+    throw new Error(`TMDB /discover/tv failed: ${discoverRes.status}`);
+  }
+  const discover = (await discoverRes.json()) as {
+    results: TmdbSearchTvResult[];
+  };
+  const animeFromDiscover = discover.results.map(toResult);
+
+  const seen = new Set(animeFromTrending.map((r) => r.sourceId));
+  const anime = animeFromTrending.slice();
+  for (const r of animeFromDiscover) {
+    if (seen.has(r.sourceId)) continue;
+    seen.add(r.sourceId);
+    anime.push(r);
+  }
+
+  return { tv: tv.slice(0, 12), anime: anime.slice(0, 12) };
+}
+
 export async function getTvTitle(
   id: string,
   // `mediaType` lets a caller fetch the exact same TMDB show as either "tv"
