@@ -6,26 +6,24 @@
 -- inside Postgres; pg_net lets a cron job make an outbound HTTP call, which is
 -- how we invoke the Edge Function from the database.
 --
--- BEFORE APPLYING — fill in the two placeholders below:
---   1. <PROJECT_REF>            — this project's ref, e.g. ermhfiofisjsrniccqlv
---      (see CLAUDE.md "Stack": project ref ermhfiofisjsrniccqlv, eu-west-1).
---      Function URL becomes:
---        https://<PROJECT_REF>.supabase.co/functions/v1/refresh-air-dates
---   2. <SERVICE_ROLE_KEY>       — the project's service role key, used as the
---      function's Authorization bearer token so it can bypass RLS to read/
---      write `titles`/`episodes`. Treat it as a secret.
+-- WHAT THE FUNCTION DOES: refresh-air-dates is TMDB-only (AniList has been
+-- fully retired). Each nightly run sweeps every title in `user_titles`
+-- regardless of watch status (not just `is_running` titles), refreshes all
+-- seasons for each title (not just the season containing the next airing
+-- episode), and logs a summary of each run to the `refresh_runs` table.
 --
--- SECURITY NOTE: embedding the service role key directly in a migration file
--- (and thus in `supabase/migrations/`, which is committed to git) is NOT
--- recommended for production. The safer pattern is to store the key in
--- Supabase Vault and reference it via `vault.decrypted_secrets` inside the
--- cron job body, so the literal value never lands in a migration file or the
--- database's plain SQL history. See:
+-- PROJECT: ermhfiofisjsrniccqlv (eu-west-1) — see CLAUDE.md "Stack".
+--   Function URL: https://ermhfiofisjsrniccqlv.supabase.co/functions/v1/refresh-air-dates
+--
+-- SECURITY — Vault-backed service role key: this migration is committed to
+-- git, so the service role key (needed as the function's Authorization
+-- bearer token to bypass RLS and read/write `titles`/`episodes`) must never
+-- appear here as a literal value. Instead it is stored in Supabase Vault
+-- under the secret name `refresh_air_dates_service_role_key` and looked up
+-- at cron-execution time via `vault.decrypted_secrets`, so the plaintext key
+-- never lands in a migration file or SQL history. See:
 --   https://supabase.com/docs/guides/database/extensions/pg_cron
 --   https://supabase.com/docs/guides/database/vault
--- This migration ships with the plain placeholder for simplicity (single-user
--- hobby project); swap in the Vault-backed version below before applying if
--- you want to avoid the key sitting in git history.
 
 -- Required extensions (usually already enabled on Supabase projects, but not
 -- guaranteed — safe to run even if already present).
@@ -33,46 +31,30 @@ create extension if not exists pg_cron with schema extensions;
 create extension if not exists pg_net with schema extensions;
 
 -- Remove any prior schedule with this name so re-running this migration is
--- idempotent (e.g. after editing the URL/token below).
+-- idempotent (e.g. after editing the job body below).
 select cron.unschedule(jobid)
 from cron.job
 where jobname = 'refresh-air-dates-nightly';
 
--- Nightly at 03:00 UTC — after most TMDB/AniList schedule updates for the day
--- have settled, comfortably before the user's morning.
+-- Nightly at 03:00 UTC — after most TMDB schedule updates for the day have
+-- settled, comfortably before the user's morning.
 select cron.schedule(
   'refresh-air-dates-nightly',
   '0 3 * * *',
   $$
   select net.http_post(
-    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/refresh-air-dates',
+    url := 'https://ermhfiofisjsrniccqlv.supabase.co/functions/v1/refresh-air-dates',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer <SERVICE_ROLE_KEY>'
+      'Authorization', 'Bearer ' || (
+        select decrypted_secret from vault.decrypted_secrets
+        where name = 'refresh_air_dates_service_role_key'
+      )
     ),
     body := '{}'::jsonb
   );
   $$
 );
-
--- ---------------------------------------------------------------------------
--- Vault-backed alternative (recommended for anything beyond a hobby project):
---
--- 1. In the SQL editor (not committed to git), once:
---      select vault.create_secret('<SERVICE_ROLE_KEY>', 'refresh_air_dates_service_role_key');
--- 2. Replace the cron.schedule body above with:
---      select net.http_post(
---        url := 'https://<PROJECT_REF>.supabase.co/functions/v1/refresh-air-dates',
---        headers := jsonb_build_object(
---          'Content-Type', 'application/json',
---          'Authorization', 'Bearer ' || (
---            select decrypted_secret from vault.decrypted_secrets
---            where name = 'refresh_air_dates_service_role_key'
---          )
---        ),
---        body := '{}'::jsonb
---      );
--- ---------------------------------------------------------------------------
 
 -- To verify scheduling after applying:
 --   select * from cron.job where jobname = 'refresh-air-dates-nightly';
