@@ -37,6 +37,17 @@
       linear-gradient(to bottom, rgba(20, 17, 14, 0.045) 1px, transparent 1px);
     background-size: 28px 28px;
   }
+
+  /* iOS Safari zooms the page in when a focused form control renders below
+     16px font-size, and never zooms back out. Force 16px on touch/coarse
+     pointer devices only, so desktop visual sizing is unaffected. */
+  @media (hover: none) and (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer components {
