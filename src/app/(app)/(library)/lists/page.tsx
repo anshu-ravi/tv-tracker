@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import CreateListForm from "@/components/CreateListForm";
 
@@ -79,10 +80,10 @@ export default async function ListsPage() {
                     thumbnails.get(list.id)!.map((url, i) => (
                       <div
                         key={i}
-                        className="h-14 w-10 overflow-hidden border-[2.5px] border-ink bg-panel"
+                        className="relative h-14 w-10 overflow-hidden border-[2.5px] border-ink bg-panel"
                         style={{ zIndex: THUMBNAIL_LIMIT - i }}
                       >
-                        <img src={url} alt="" className="h-full w-full object-cover" />
+                        <Image src={url} alt="" fill sizes="40px" className="object-cover" />
                       </div>
                     ))
                   ) : (

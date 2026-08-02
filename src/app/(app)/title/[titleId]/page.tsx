@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { getTvCredits } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
@@ -156,11 +157,14 @@ export default async function TitleDetailPage({
       {title.backdrop_url ? (
         // Float over the backdrop image.
         <div className="relative">
-          <div className="aspect-[16/9] w-full border-b-[3px] border-ink bg-panel">
-            <img
+          <div className="relative aspect-[16/9] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
+            <Image
               src={title.backdrop_url}
               alt=""
-              className="h-full w-full object-cover"
+              fill
+              sizes="100vw"
+              className="object-cover"
+              priority
             />
           </div>
           <div className="absolute left-4 top-4">
@@ -175,12 +179,14 @@ export default async function TitleDetailPage({
       )}
 
       <div className="flex gap-4 px-4 pt-4">
-        <div className="h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
+        <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
           {title.poster_url ? (
-            <img
+            <Image
               src={title.poster_url}
               alt={title.title}
-              className="h-full w-full object-cover"
+              fill
+              sizes="96px"
+              className="object-cover"
             />
           ) : null}
         </div>
@@ -242,12 +248,14 @@ export default async function TitleDetailPage({
               key={`${member.name}-${i}`}
               className="card-bold w-20 shrink-0 overflow-hidden p-0"
             >
-              <div className="aspect-[2/3] w-full border-b-[3px] border-ink bg-panel">
+              <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
                 {member.imageUrl ? (
-                  <img
+                  <Image
                     src={member.imageUrl}
                     alt={member.name}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="80px"
+                    className="object-cover"
                   />
                 ) : null}
               </div>

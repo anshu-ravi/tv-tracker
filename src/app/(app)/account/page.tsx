@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import ProfileEditor from "@/components/ProfileEditor";
@@ -48,11 +49,9 @@ export default async function AccountPage() {
 
       <div className="card-bold flex items-center gap-3 p-4">
         {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt="Profile photo"
-            className="h-14 w-14 shrink-0 border-[3px] border-ink object-cover"
-          />
+          <div className="relative h-14 w-14 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
+            <Image src={avatarUrl} alt="Profile photo" fill sizes="56px" className="object-cover" />
+          </div>
         ) : (
           <div className="flex h-14 w-14 shrink-0 items-center justify-center border-[3px] border-ink bg-acid">
             <span className="display text-xl">{initial}</span>

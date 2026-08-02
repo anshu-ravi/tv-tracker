@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { WatchingCardData } from "@/components/WatchingCard";
 
 // Horizontally-scrolling "get back into this" shortcut for shows the user
@@ -22,12 +23,14 @@ export default function CatchUpCarousel({ items }: { items: WatchingCardData[] }
               href={`/title/${card.titleId}`}
               className="card-bold flex w-40 shrink-0 snap-start flex-col gap-1.5 p-2.5"
             >
-              <div className="h-40 w-full overflow-hidden rounded-md border-[3px] border-ink bg-panel">
+              <div className="relative h-40 w-full overflow-hidden rounded-md border-[3px] border-ink bg-panel">
                 {card.posterUrl ? (
-                  <img
+                  <Image
                     src={card.posterUrl}
                     alt={card.title}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="160px"
+                    className="object-cover"
                   />
                 ) : null}
               </div>
