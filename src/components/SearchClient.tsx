@@ -155,12 +155,14 @@ export default function SearchClient({
             results={exploreTv}
             existing={existing}
             onAdded={() => router.refresh()}
+            isFirstSection={exploreTv.length > 0}
           />
           <ExploreRail
             heading="Trending Anime"
             results={exploreAnime}
             existing={existing}
             onAdded={() => router.refresh()}
+            isFirstSection={exploreTv.length === 0 && exploreAnime.length > 0}
           />
         </>
       )}

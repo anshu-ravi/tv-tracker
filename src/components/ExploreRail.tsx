@@ -14,11 +14,16 @@ export default function ExploreRail({
   results,
   existing,
   onAdded,
+  isFirstSection = false,
 }: {
   heading: string;
   results: SearchResult[];
   existing: Record<string, ExistingLibraryEntry>;
   onAdded: () => void;
+  // True only for the first rail rendered on the Search screen's Explore
+  // state (Trending TV) — its first couple of cards are what's actually
+  // above the fold; the Trending Anime rail below it never is.
+  isFirstSection?: boolean;
 }) {
   if (results.length === 0) return null;
 
@@ -27,7 +32,7 @@ export default function ExploreRail({
       <h2 className="display mb-2 text-lg">{heading}</h2>
       <div className="-mx-4 overflow-x-auto px-4 pb-2">
         <div className="flex w-max snap-x snap-mandatory gap-3">
-          {results.map((result) => (
+          {results.map((result, index) => (
             <div
               key={`${result.source}:${result.sourceId}`}
               className="w-28 shrink-0 snap-start"
@@ -41,6 +46,7 @@ export default function ExploreRail({
                   existing[`${result.source}:${result.sourceId}`]?.titleId
                 }
                 onAdded={onAdded}
+                priority={isFirstSection && index < 2}
               />
             </div>
           ))}

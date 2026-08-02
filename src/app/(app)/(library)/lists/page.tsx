@@ -69,7 +69,7 @@ export default async function ListsPage() {
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {sortedLists.map((list) => (
+          {sortedLists.map((list, listIndex) => (
             <li key={list.id}>
               <Link
                 href={`/lists/${list.id}`}
@@ -83,7 +83,19 @@ export default async function ListsPage() {
                         className="relative h-14 w-10 overflow-hidden border-[2.5px] border-ink bg-panel"
                         style={{ zIndex: THUMBNAIL_LIMIT - i }}
                       >
-                        <Image src={url} alt="" fill sizes="40px" className="object-cover" />
+                        <Image
+                          src={url}
+                          alt=""
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                          // Only the very first thumbnail of the first list
+                          // row is a plausible LCP element on this screen —
+                          // every other thumbnail (same list or lists
+                          // further down) is smaller-impact or below the
+                          // fold.
+                          priority={listIndex === 0 && i === 0}
+                        />
                       </div>
                     ))
                   ) : (

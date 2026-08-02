@@ -6,7 +6,17 @@ import type { WatchingCardData } from "@/components/WatchingCard";
 // has fallen well behind on (see CATCHUP_THRESHOLD_DAYS in the Home page).
 // Deliberately has no mark-watched control — tapping just opens the title so
 // the user can catch up properly rather than one-tapping through a backlog.
-export default function CatchUpCarousel({ items }: { items: WatchingCardData[] }) {
+export default function CatchUpCarousel({
+  items,
+  isFirstSection = false,
+}: {
+  items: WatchingCardData[];
+  // True only when this carousel is the first thing shown in the "Currently
+  // Watching" tab — i.e. the Up Next list is empty and this carousel opens
+  // the screen instead. When Up Next has cards, this carousel sits below
+  // them, off the initial viewport.
+  isFirstSection?: boolean;
+}) {
   return (
     // `-mx-4 px-4` extends the scroll container to the screen edges (matching
     // the page's own px-4 gutter) while still padding its content so the
@@ -16,7 +26,7 @@ export default function CatchUpCarousel({ items }: { items: WatchingCardData[] }
     // here rather than pushing the page wider).
     <div className="-mx-4 overflow-x-auto px-4 pb-2">
       <div className="flex w-max snap-x snap-mandatory gap-3">
-        {items.map((card) => {
+        {items.map((card, index) => {
           return (
             <Link
               key={card.titleId}
@@ -31,6 +41,7 @@ export default function CatchUpCarousel({ items }: { items: WatchingCardData[] }
                     fill
                     sizes="160px"
                     className="object-cover"
+                    priority={isFirstSection && index < 2}
                   />
                 ) : null}
               </div>

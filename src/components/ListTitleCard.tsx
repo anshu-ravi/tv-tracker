@@ -12,9 +12,11 @@ import PosterCard, { type PosterCardTitle } from "@/components/PosterCard";
 export default function ListTitleCard({
   listId,
   title,
+  priority = false,
 }: {
   listId: string;
   title: PosterCardTitle;
+  priority?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -38,7 +40,7 @@ export default function ListTitleCard({
 
   return (
     <div className="relative">
-      <PosterCard title={title} />
+      <PosterCard title={title} priority={priority} />
       <button
         type="button"
         onClick={handleRemove}

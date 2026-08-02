@@ -138,7 +138,16 @@ function MarkButton({
   );
 }
 
-export default function WatchingCard({ data }: { data: WatchingCardData }) {
+export default function WatchingCard({
+  data,
+  priority = false,
+}: {
+  data: WatchingCardData;
+  // Set for the first "Up Next" card only — Home is the app's landing
+  // screen and this stacked list's first card is the most likely LCP
+  // element in the whole app.
+  priority?: boolean;
+}) {
   const router = useRouter();
   // "justMarked" is a purely optimistic flag: true from the moment the POST
   // succeeds until the server-refreshed `data` prop arrives. The Home page
@@ -251,6 +260,7 @@ export default function WatchingCard({ data }: { data: WatchingCardData }) {
             fill
             sizes="64px"
             className="object-cover"
+            priority={priority}
           />
         ) : null}
       </Link>

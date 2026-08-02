@@ -33,10 +33,15 @@ export default function PosterCard({
   title,
   muted = false,
   status,
+  priority = false,
 }: {
   title: PosterCardTitle;
   muted?: boolean;
   status?: WatchStatus;
+  // Set by callers for the first row of an above-the-fold grid, so the
+  // likely LCP poster skips lazy-loading. Defaults to false — most grid
+  // tiles are below the fold and should stay lazy.
+  priority?: boolean;
 }) {
   return (
     <div className={`card-bold relative p-0 ${muted ? "opacity-60 grayscale-[35%]" : ""}`}>
@@ -51,6 +56,7 @@ export default function PosterCard({
               fill
               sizes="(max-width: 640px) 33vw, 200px"
               className="object-cover"
+              priority={priority}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center p-2 text-center">
