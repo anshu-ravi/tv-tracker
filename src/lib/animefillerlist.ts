@@ -21,6 +21,40 @@ interface ShowIndexEntry {
   name: string;
 }
 
+// Explicit per-title overrides for shows whose animefillerlist coverage is
+// split across multiple pages (e.g. a franchise gets a separate page per
+// arc/series). Keyed by normalize(our title). Each range fetches one
+// animefillerlist show page and remaps its LOCAL episode numbers onto OUR
+// absolute_number space via `offset`: ourAbsoluteNumber = localNumber -
+// offset (equivalently localNumber = ourAbsoluteNumber + offset).
+//
+// `minAbsolute`/`maxAbsolute` (inclusive, in OUR absolute_number space) are
+// an optional safety bound — episodes a range's page reports outside them
+// are dropped rather than trusted, in case a page's coverage ever grows
+// past the arc it was pinned for.
+//
+// This is a single-user app with a handful of split franchises, so a
+// checked-in constant is simpler than a DB table (unlike titles.tmdb_match_*,
+// nothing here needs to be user-editable at runtime).
+interface SlugRange {
+  slug: string;
+  offset: number;
+  minAbsolute?: number;
+  maxAbsolute?: number;
+}
+
+const TITLE_SLUG_OVERRIDES: Record<string, SlugRange[]> = {
+  bleach: [
+    { slug: "bleach", offset: 0, maxAbsolute: 366 },
+    // Verified against the live site + our DB (2026-08-02): our Bleach S2 is
+    // absolute 367-416 (episode_number 1-50). animefillerlist's dedicated
+    // TYBW page only publishes local episodes 1-40 (our 367-406) as of this
+    // writing — 407-416 simply have no upstream classification yet and
+    // correctly fall through to "no data".
+    { slug: "bleach-thousand-year-blood-war", offset: -366, minAbsolute: 367 },
+  ],
+};
+
 // Module-level cache for the resolved slug index, so a render with several
 // anime titles only re-parses the (large) show index once per server
 // lifetime between Next's own 24h fetch-cache revalidations.
@@ -135,20 +169,56 @@ function resolveSlug(title: string, entries: ShowIndexEntry[]): string | null {
   return null;
 }
 
+async function fetchSlugTable(slug: string): Promise<Map<number, EpisodeFiller>> {
+  const res = await fetch(`${BASE_URL}/shows/${slug}`, {
+    next: { revalidate: DAY },
+  });
+  if (!res.ok) return new Map();
+  const html = await res.text();
+  return parseEpisodeTable(html);
+}
+
+// Fetch one or more animefillerlist pages for a title with an explicit
+// range mapping and merge them into a single our-absolute_number-keyed map.
+// Each range is fetched/parsed independently so one broken/renamed page
+// can't wipe out data the other ranges successfully found.
+async function getFillerDataFromRanges(
+  ranges: SlugRange[],
+): Promise<Map<number, EpisodeFiller>> {
+  const combined = new Map<number, EpisodeFiller>();
+  await Promise.all(
+    ranges.map(async (range) => {
+      try {
+        const localTable = await fetchSlugTable(range.slug);
+        for (const [local, filler] of localTable) {
+          const ourNumber = local - range.offset;
+          if (range.minAbsolute !== undefined && ourNumber < range.minAbsolute) continue;
+          if (range.maxAbsolute !== undefined && ourNumber > range.maxAbsolute) continue;
+          combined.set(ourNumber, filler);
+        }
+      } catch (err) {
+        console.error(`animefillerlist range lookup failed for ${range.slug}:`, err);
+      }
+    }),
+  );
+  return combined;
+}
+
 export async function getAnimeFillerData(
   title: string,
 ): Promise<Map<number, EpisodeFiller> | null> {
   try {
+    const override = TITLE_SLUG_OVERRIDES[normalize(title)];
+    if (override) {
+      const table = await getFillerDataFromRanges(override);
+      return table.size > 0 ? table : null;
+    }
+
     const entries = await fetchShowIndex();
     const slug = resolveSlug(title, entries);
     if (!slug) return null;
 
-    const res = await fetch(`${BASE_URL}/shows/${slug}`, {
-      next: { revalidate: DAY },
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-    const table = parseEpisodeTable(html);
+    const table = await fetchSlugTable(slug);
     return table.size > 0 ? table : null;
   } catch (err) {
     console.error("animefillerlist lookup failed:", err);
