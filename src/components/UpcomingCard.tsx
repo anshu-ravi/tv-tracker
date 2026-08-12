@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { UpcomingItem } from "@/components/HomeTabs";
+import { tmdbImageLoader } from "@/lib/tmdbImage";
 // (type-only import — no runtime dependency on HomeTabs, so no circularity.)
 
 const MEDIA_TYPE_LABEL: Record<UpcomingItem["mediaType"], string> = {
@@ -30,6 +31,7 @@ export default function UpcomingCard({ item }: { item: UpcomingItem }) {
             fill
             sizes="64px"
             className="object-cover"
+            loader={tmdbImageLoader}
           />
         ) : null}
       </div>
