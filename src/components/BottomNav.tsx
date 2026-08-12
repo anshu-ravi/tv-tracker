@@ -4,14 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { HomeIcon, LibraryIcon, SearchIcon, UserIcon } from "@/components/icons";
 
-// Floating bottom-tab pill for the authed app shell. Client component
-// because it needs the current pathname to highlight the active tab.
+// Docked bottom-tab bar for the authed app shell. Client component because
+// it needs the current pathname to highlight the active tab.
 //
-// Floats above the bottom edge (inset by a gap + the iOS safe-area) instead
-// of sitting flush against it, so it clears the home-indicator bar on
-// notched iPhones and stays comfortably tappable. `env()`/`calc()` can't be
-// expressed in Tailwind utilities, so the offset lives in inline `style`;
-// everything else stays as utility classes.
+// A static flex child of the app shell now, not a `position: fixed`
+// floating pill (see (app)/layout.tsx for why). It sits flush against the
+// bottom edge of the shell; a `padding-bottom` of the iOS safe-area inset
+// keeps the tap targets clear of the home-indicator bar on notched iPhones.
+// `env()` can't be expressed in Tailwind utilities, so that padding lives in
+// inline `style`; everything else stays as utility classes.
 //
 // Four icon+label tabs. LIBRARY covers the four library routes (TV, Anime,
 // Watchlist, Lists) — see LibrarySubnav for the segmented control that picks
@@ -34,10 +35,10 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="hard-shadow fixed left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[calc(28rem-1.5rem)] -translate-x-1/2 rounded-[14px] border-[3px] border-ink bg-paper"
-      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+      className="border-t-[3px] border-ink bg-paper"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="flex w-full overflow-hidden rounded-[11px]">
+      <ul className="flex w-full">
         {TABS.map((tab) => {
           const active = tab.exact
             ? pathname === "/"
