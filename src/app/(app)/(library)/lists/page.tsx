@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import CreateListForm from "@/components/CreateListForm";
-import { tmdbImageLoader } from "@/lib/tmdbImage";
 
 // Mirrors the (untyped-client, cast-to-row-interface) pattern used across
 // the other server components — no generated Database types yet.
@@ -96,7 +95,6 @@ export default async function ListsPage() {
                           // further down) is smaller-impact or below the
                           // fold.
                           priority={listIndex === 0 && i === 0}
-                          loader={tmdbImageLoader}
                         />
                       </div>
                     ))

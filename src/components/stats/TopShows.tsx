@@ -1,6 +1,5 @@
 import Image from "next/image";
 import type { UserStats } from "@/lib/stats";
-import { tmdbImageLoader } from "@/lib/tmdbImage";
 
 // Up to 10 rows, each a horizontal bar sized relative to the max hours in
 // the list, with a small poster thumb, title, hours, and episode count.
@@ -28,7 +27,6 @@ export default function TopShows({ stats }: { stats: UserStats }) {
                       fill
                       sizes="36px"
                       className="object-cover"
-                      loader={tmdbImageLoader}
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center">

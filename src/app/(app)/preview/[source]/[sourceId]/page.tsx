@@ -8,7 +8,6 @@ import BackButton from "@/components/BackButton";
 import PreviewEpisodeList, { type PreviewSeasonGroup } from "@/components/PreviewEpisodeList";
 import RatingBadges from "@/components/RatingBadges";
 import TitleActionBar from "@/components/TitleActionBar";
-import { tmdbImageLoader } from "@/lib/tmdbImage";
 import type {
   DataSource,
   MediaType,
@@ -135,7 +134,6 @@ export default async function PreviewPage({
               sizes="100vw"
               className="object-cover"
               priority
-              loader={tmdbImageLoader}
             />
           </div>
           <div className="absolute left-4 top-4">
@@ -157,7 +155,6 @@ export default async function PreviewPage({
               fill
               sizes="96px"
               className="object-cover"
-              loader={tmdbImageLoader}
             />
           ) : null}
         </div>
@@ -194,7 +191,6 @@ export default async function PreviewPage({
                     fill
                     sizes="80px"
                     className="object-cover"
-                    loader={tmdbImageLoader}
                   />
                 ) : null}
               </div>

@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 import CardActionSheet from "@/components/CardActionSheet";
-import { tmdbImageLoader } from "@/lib/tmdbImage";
 
 export interface PosterCardTitle {
   id: string;
@@ -58,7 +57,6 @@ export default function PosterCard({
               sizes="(max-width: 640px) 33vw, 200px"
               className="object-cover"
               priority={priority}
-              loader={tmdbImageLoader}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center p-2 text-center">
