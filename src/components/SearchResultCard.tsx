@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { SearchResult, WatchStatus } from "@/lib/types";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
@@ -70,12 +71,15 @@ export default function SearchResultCard({
 
   const poster = result.posterUrl ? (
     <Image
-      src={result.posterUrl}
+      // Same tile size as PosterCard's grid (~140px mobile / 200px
+      // desktop) -> 280 (~2x mobile) for a crisp retina result.
+      src={buildTmdbImageUrl(result.posterUrl, 280)}
       alt={result.title}
       fill
       sizes="(max-width: 640px) 33vw, 200px"
       className="object-cover"
       priority={priority}
+      unoptimized
     />
   ) : (
     <div className="flex h-full w-full items-center justify-center p-2 text-center">

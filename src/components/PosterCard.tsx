@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 import CardActionSheet from "@/components/CardActionSheet";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 export interface PosterCardTitle {
   id: string;
@@ -51,12 +52,17 @@ export default function PosterCard({
         <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-[11px] border-b-[3px] border-ink bg-panel">
           {title.posterUrl ? (
             <Image
-              src={title.posterUrl}
+              // Grid tile is ~140px wide on mobile (the common case, per
+              // the `sizes` below) and up to 200px on desktop; 280 (~2x the
+              // mobile width) keeps it crisp on retina without requesting
+              // the full w500 the DB stores.
+              src={buildTmdbImageUrl(title.posterUrl, 280)}
               alt={title.title}
               fill
               sizes="(max-width: 640px) 33vw, 200px"
               className="object-cover"
               priority={priority}
+              unoptimized
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center p-2 text-center">

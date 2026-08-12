@@ -8,6 +8,7 @@ import BackButton from "@/components/BackButton";
 import PreviewEpisodeList, { type PreviewSeasonGroup } from "@/components/PreviewEpisodeList";
 import RatingBadges from "@/components/RatingBadges";
 import TitleActionBar from "@/components/TitleActionBar";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 import type {
   DataSource,
   MediaType,
@@ -128,12 +129,16 @@ export default async function PreviewPage({
         <div className="relative">
           <div className="relative aspect-[16/9] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
             <Image
-              src={title.backdropUrl}
+              // Full-bleed hero; 750 (~375px mobile viewport x2 retina)
+              // keeps the existing w780 bucket lib/tmdb.ts already built
+              // this URL at rather than upsizing further.
+              src={buildTmdbImageUrl(title.backdropUrl, 750)}
               alt=""
               fill
               sizes="100vw"
               className="object-cover"
               priority
+              unoptimized
             />
           </div>
           <div className="absolute left-4 top-4">
@@ -150,11 +155,13 @@ export default async function PreviewPage({
         <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
           {title.posterUrl ? (
             <Image
-              src={title.posterUrl}
+              // 96px box -> 192 (2x) for retina.
+              src={buildTmdbImageUrl(title.posterUrl, 192)}
               alt={title.title}
               fill
               sizes="96px"
               className="object-cover"
+              unoptimized
             />
           ) : null}
         </div>
@@ -186,11 +193,13 @@ export default async function PreviewPage({
               <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
                 {member.imageUrl ? (
                   <Image
-                    src={member.imageUrl}
+                    // 80px box -> 160 (2x) for retina.
+                    src={buildTmdbImageUrl(member.imageUrl, 160)}
                     alt={member.name}
                     fill
                     sizes="80px"
                     className="object-cover"
+                    unoptimized
                   />
                 ) : null}
               </div>

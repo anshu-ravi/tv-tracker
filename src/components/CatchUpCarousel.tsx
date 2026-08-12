@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { WatchingCardData } from "@/components/WatchingCard";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 // Horizontally-scrolling "get back into this" shortcut for shows the user
 // has fallen well behind on (see CATCHUP_THRESHOLD_DAYS in the Home page).
@@ -36,12 +37,14 @@ export default function CatchUpCarousel({
               <div className="relative h-40 w-full overflow-hidden rounded-md border-[3px] border-ink bg-panel">
                 {card.posterUrl ? (
                   <Image
-                    src={card.posterUrl}
+                    // 160px card -> 320 (2x) for retina.
+                    src={buildTmdbImageUrl(card.posterUrl, 320)}
                     alt={card.title}
                     fill
                     sizes="160px"
                     className="object-cover"
                     priority={isFirstSection && index < 2}
+                    unoptimized
                   />
                 ) : null}
               </div>
