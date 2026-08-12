@@ -58,9 +58,17 @@
 // src/lib/api/catalog.ts (refreshCatalogTitle / upsertTitleAndEpisodes).
 // Each duplicated block below is commented with which src/lib/ function it
 // mirrors — keep them in sync by hand when either changes.
+//
+// This run also resolves and persists animefillerlist.com canon/filler/mixed
+// data for anime titles (see applyFillerData below and
+// ./animefillerlist.ts, a Deno-runtime copy of src/lib/animefillerlist.ts) —
+// that used to be scraped live on every Home/title-detail page render;
+// see the migration that added episodes.filler_type/filler_name and
+// titles.filler_available/filler_checked_at for the full contract.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { shouldSkipRefresh } from "./mediaTypeGuard.ts";
+import { getAnimeFillerData } from "./animefillerlist.ts";
 
 // ---- types mirroring the app's catalog (src/lib/types.ts, snake_case) -------
 
@@ -86,6 +94,12 @@ interface EpisodeUpsert {
   air_date: string | null;
   still_url: string | null;
   runtime: number | null;
+  // Anime-only, and only ever added to every episode object in a title's
+  // batch at once (see applyFillerData) — never added to some and omitted
+  // from others in the same upsert call, since PostgREST needs a consistent
+  // column set across the batch.
+  filler_type?: string | null;
+  filler_name?: string | null;
 }
 
 interface NextEpisodeUpdate {
@@ -209,6 +223,45 @@ async function refreshTvTitle(
   };
 }
 
+// ---- filler data (anime only) ------------------------------------------------
+//
+// Moves the animefillerlist.com scrape that src/app/(app)/page.tsx and
+// src/app/(app)/title/[titleId]/page.tsx used to do on every render into
+// this nightly sweep instead — see the migration that added these columns
+// for the full three-state contract (episodes.filler_type/filler_name,
+// titles.filler_available/filler_checked_at).
+//
+// Conservative by design: this only ever WRITES filler_type/filler_name (by
+// mutating `episodes` in place, before the caller's single upsert) and
+// returns the titles.filler_available/filler_checked_at pair to merge into
+// the caller's titles update, when getAnimeFillerData resolves normally —
+// whether that resolution is "found a page" or "definitively no page".
+// If getAnimeFillerData throws (transient network/parse failure on the
+// shared index — see animefillerlist.ts's file header), this catches it,
+// logs it, and returns null so the caller adds NO filler keys anywhere:
+// existing filler_available/filler_type/filler_name values in the DB are
+// left exactly as they were. A scrape hiccup during one nightly run must
+// never downgrade a title from "has a page, quiet dash for the rest" to
+// "no tag at all" — that's the regression this whole change has to avoid.
+async function applyFillerData(
+  row: TitleRow,
+  episodes: EpisodeUpsert[],
+): Promise<{ filler_available: boolean; filler_checked_at: string } | null> {
+  try {
+    const fillerMap = await getAnimeFillerData(row.title);
+    for (const ep of episodes) {
+      const filler =
+        fillerMap && ep.absolute_number != null ? fillerMap.get(ep.absolute_number) : undefined;
+      ep.filler_type = filler?.type ?? null;
+      ep.filler_name = filler?.name ?? null;
+    }
+    return { filler_available: fillerMap !== null, filler_checked_at: new Date().toISOString() };
+  } catch (err) {
+    console.error(`animefillerlist lookup failed for "${row.title}":`, err);
+    return null;
+  }
+}
+
 // ---- per-title orchestration -------------------------------------------------
 
 interface RunSummary {
@@ -231,12 +284,22 @@ async function refreshOne(row: TitleRow, summary: RunSummary): Promise<void> {
 
     const result = await refreshTvTitle(row);
 
+    // Anime-only, and deliberately AFTER refreshTvTitle but BEFORE either
+    // write below: it mutates result.episodes in place with filler_type/
+    // filler_name (or leaves them untouched on a resolution failure — see
+    // applyFillerData) and supplies the filler_available/filler_checked_at
+    // pair to fold into the same titles update this title already needed,
+    // rather than issuing a second one.
+    const fillerUpdate =
+      row.media_type === "anime" ? await applyFillerData(row, result.episodes) : null;
+
     const { error: updateError } = await supabase
       .from("titles")
       .update({
         next_episode_air_date: result.next.next_episode_air_date,
         next_episode_label: result.next.next_episode_label,
         is_running: result.isRunning,
+        ...(fillerUpdate ?? {}),
       })
       .eq("id", row.id);
     if (updateError) throw new Error(`titles update failed: ${updateError.message}`);

@@ -7,7 +7,20 @@ is tracking. Source of data: **TMDB only**. Anime was fully migrated off
 AniList onto TMDB in session 3 (see CLAUDE.md / HANDOFF.md); `media_type`
 stays `tv` vs `anime` in the row, but both are fetched from `/tv/{id}` and
 `/tv/{id}/season/{n}`, and anime rows get `absolute_number` recomputed so
-`src/lib/animefillerlist.ts` filler tags keep working.
+filler tags keep working.
+
+For `media_type = 'anime'` titles, this run also resolves a
+canon/filler/mixed classification per episode from animefillerlist.com
+(`animefillerlist.ts`, a Deno-runtime copy of `src/lib/animefillerlist.ts`)
+and persists it — `episodes.filler_type` / `episodes.filler_name` and
+`titles.filler_available` / `titles.filler_checked_at`. This used to be
+scraped live on every Home and title-detail page render; it now happens once
+per title per nightly/weekly sweep instead, and the pages just read the
+columns. See the migration that added these columns
+(`supabase/migrations/20260812120000_episodes_filler_columns.sql`) for the
+three-state contract, and `applyFillerData` in `index.ts` for why a filler
+lookup failure never touches previously-stored values (conservative by
+design — see that function's comment).
 
 ## Two scopes, two schedules
 

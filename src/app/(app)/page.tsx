@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import HomeTabs, { type UpcomingItem } from "@/components/HomeTabs";
 import { type WatchingCardData } from "@/components/WatchingCard";
-import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
 import type { MediaType } from "@/lib/types";
 
 // --- Row shapes for the untyped Supabase client -----------------------------
@@ -32,6 +31,13 @@ interface EpisodeRow {
   name: string | null;
   air_date: string | null;
   overview: string | null;
+  // Anime-only, populated by the nightly refresh (supabase/functions/
+  // refresh-air-dates/) from animefillerlist.com — see the migration that
+  // added these columns. Both null for TV, and for anime episodes the
+  // refresh hasn't classified (no upstream page, or page found but this
+  // episode isn't tagged there yet).
+  filler_type: "canon" | "filler" | "mixed" | null;
+  filler_name: string | null;
 }
 
 interface WatchedEpisodeRow {
@@ -92,6 +98,27 @@ export function classifyBucket(
   if (!lastWatchedAtIso) return "upnext";
   const daysSinceLastWatch = daysBetween(lastWatchedAtIso.slice(0, 10), todayIso);
   return daysSinceLastWatch > CATCHUP_THRESHOLD_DAYS ? "catchup" : "upnext";
+}
+
+// Anime-only display for the Currently Watching card's next-up episode,
+// sourced from the columns the nightly refresh (supabase/functions/
+// refresh-air-dates/) populates from animefillerlist.com — no live scrape on
+// render. Factored out (like classifyBucket above) so the name-precedence
+// rule is unit-testable without a Supabase round trip: animefillerlist's
+// name is PREFERRED over TMDB's here (the opposite of the title detail
+// page's fallback-only precedence — see resolveEpisodeFillerDisplay in
+// src/app/(app)/title/[titleId]/page.tsx). Home never renders the "quiet
+// dash" unclassified state the title page does — an unclassified anime
+// episode here just means no tag renders, same as a non-anime episode.
+export function resolveAnimeNextEpisodeDisplay(
+  fillerType: "canon" | "filler" | "mixed" | null,
+  fillerName: string | null,
+  tmdbName: string | null,
+): { fillerType: "canon" | "filler" | "mixed" | undefined; name: string | null } {
+  return {
+    fillerType: fillerType ?? undefined,
+    name: fillerName ?? tmdbName ?? null,
+  };
 }
 
 export default async function HomePage() {
@@ -164,7 +191,7 @@ export default async function HomePage() {
     supabase
       .from("episodes")
       .select(
-        "id, title_id, season_number, episode_number, absolute_number, name, air_date, overview",
+        "id, title_id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name",
       )
       .in("title_id", titleIds)
       .order("season_number", { ascending: true })
@@ -190,22 +217,6 @@ export default async function HomePage() {
     }
   }
 
-  // Anime-only: canon/filler/mixed tags for the next-up episode, from
-  // animefillerlist.com. getAnimeFillerData already swallows its own
-  // errors/no-match and returns null, so a lookup failure never blocks the
-  // page — it just means no tag renders for that card.
-  const animeTitles = watchingTitles.filter((ut) => ut.titles.media_type === "anime");
-  const fillerEntries = await Promise.all(
-    animeTitles.map(async (ut) => {
-      try {
-        return [ut.title_id, await getAnimeFillerData(ut.titles.title)] as const;
-      } catch {
-        return [ut.title_id, null] as const;
-      }
-    }),
-  );
-  const fillerByTitleId = new Map<string, Map<number, EpisodeFiller> | null>(fillerEntries);
-
   const cards = watchingTitles
     .map((ut): WatchingCardData | null => {
     const title = ut.titles;
@@ -226,11 +237,17 @@ export default async function HomePage() {
     // out below.
     if (!nextEpisode) return null;
 
-    const fillerMap = fillerByTitleId.get(ut.title_id) ?? null;
-    const nextEpisodeFillerType =
-      title.media_type === "anime" && nextEpisode
-        ? fillerMap?.get(nextEpisode.absolute_number ?? nextEpisode.episode_number)?.type
-        : undefined;
+    // Anime-only display (tag + name precedence) — see
+    // resolveAnimeNextEpisodeDisplay above.
+    const animeDisplay =
+      title.media_type === "anime"
+        ? resolveAnimeNextEpisodeDisplay(
+            nextEpisode.filler_type,
+            nextEpisode.filler_name,
+            nextEpisode.name,
+          )
+        : null;
+    const nextEpisodeFillerType = animeDisplay?.fillerType;
 
     // Anime now uses the same SxxEyy format as TV (owner decision — consistent
     // naming across the app, see CLAUDE.md). This also degrades sensibly for
@@ -239,12 +256,7 @@ export default async function HomePage() {
     // renders "S1E43" instead of the old "E43" rather than needing a branch.
     const nextEpisodeCode = `S${nextEpisode.season_number}E${nextEpisode.episode_number}`;
 
-    const nextEpisodeName =
-      title.media_type === "anime"
-        ? (fillerMap?.get(nextEpisode.absolute_number ?? nextEpisode.episode_number)?.name ??
-          nextEpisode.name ??
-          null)
-        : nextEpisode.name;
+    const nextEpisodeName = animeDisplay ? animeDisplay.name : nextEpisode.name;
 
     const nextEpisodeOverview = nextEpisode.overview ?? null;
 
