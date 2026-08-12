@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import ProgressBar from "@/components/ProgressBar";
 import FillerTag, { type FillerType } from "@/components/FillerTag";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 // Everything the Home page's server component already knows about a single
 // "currently watching" title, pre-computed there (progress counts + which
@@ -255,12 +256,14 @@ export default function WatchingCard({
       >
         {data.posterUrl ? (
           <Image
-            src={data.posterUrl}
+            // 64px thumb -> 128 (2x) for retina.
+            src={buildTmdbImageUrl(data.posterUrl, 128)}
             alt={data.title}
             fill
             sizes="64px"
             className="object-cover"
             priority={priority}
+            unoptimized
           />
         ) : null}
       </Link>

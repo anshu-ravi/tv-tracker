@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { UpcomingItem } from "@/components/HomeTabs";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 // (type-only import — no runtime dependency on HomeTabs, so no circularity.)
 
 const MEDIA_TYPE_LABEL: Record<UpcomingItem["mediaType"], string> = {
@@ -25,11 +26,13 @@ export default function UpcomingCard({ item }: { item: UpcomingItem }) {
       <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel">
         {item.posterUrl ? (
           <Image
-            src={item.posterUrl}
+            // 64px thumb -> 128 (2x) for retina.
+            src={buildTmdbImageUrl(item.posterUrl, 128)}
             alt={item.title}
             fill
             sizes="64px"
             className="object-cover"
+            unoptimized
           />
         ) : null}
       </div>

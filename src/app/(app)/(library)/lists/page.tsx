@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import CreateListForm from "@/components/CreateListForm";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 // Mirrors the (untyped-client, cast-to-row-interface) pattern used across
 // the other server components — no generated Database types yet.
@@ -84,7 +85,8 @@ export default async function ListsPage() {
                         style={{ zIndex: THUMBNAIL_LIMIT - i }}
                       >
                         <Image
-                          src={url}
+                          // 40px thumb -> 80 (2x) for retina.
+                          src={buildTmdbImageUrl(url, 80)}
                           alt=""
                           fill
                           sizes="40px"
@@ -95,6 +97,7 @@ export default async function ListsPage() {
                           // further down) is smaller-impact or below the
                           // fold.
                           priority={listIndex === 0 && i === 0}
+                          unoptimized
                         />
                       </div>
                     ))

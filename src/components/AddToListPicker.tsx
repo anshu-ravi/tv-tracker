@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 // A candidate title from the user's tracked library that isn't already in
 // this list — the server page has already excluded anything already a
@@ -106,11 +107,13 @@ export default function AddToListPicker({
                       <div className="relative h-11 w-8 shrink-0 overflow-hidden border-2 border-ink bg-panel">
                         {candidate.posterUrl ? (
                           <Image
-                            src={candidate.posterUrl}
+                            // 32px thumb -> 64 (2x) for retina.
+                            src={buildTmdbImageUrl(candidate.posterUrl, 64)}
                             alt=""
                             fill
                             sizes="32px"
                             className="object-cover"
+                            unoptimized
                           />
                         ) : null}
                       </div>
