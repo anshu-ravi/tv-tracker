@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import type { SearchResult, WatchStatus } from "@/lib/types";
+import { tmdbImageLoader } from "@/lib/tmdbImage";
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
@@ -76,6 +77,7 @@ export default function SearchResultCard({
       sizes="(max-width: 640px) 33vw, 200px"
       className="object-cover"
       priority={priority}
+      loader={tmdbImageLoader}
     />
   ) : (
     <div className="flex h-full w-full items-center justify-center p-2 text-center">

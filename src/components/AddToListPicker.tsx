@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { tmdbImageLoader } from "@/lib/tmdbImage";
 
 // A candidate title from the user's tracked library that isn't already in
 // this list — the server page has already excluded anything already a
@@ -111,6 +112,7 @@ export default function AddToListPicker({
                             fill
                             sizes="32px"
                             className="object-cover"
+                            loader={tmdbImageLoader}
                           />
                         ) : null}
                       </div>
