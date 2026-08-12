@@ -4,6 +4,7 @@
 //   from(table).insert(...)
 //   from(table).update(...).eq(...).eq(...).select().maybeSingle()
 //   from(table).delete().eq(...).eq(...).in(...)
+//   rpc(fnName, args)
 //   auth.getUser()
 //
 // Not a test file itself (lives outside the `tests/**/*.test.ts` glob).
@@ -97,13 +98,21 @@ export interface FakeSupabaseOptions {
    * once the array is exhausted, its last entry is reused.
    */
   tableResults?: Record<string, TableResult | TableResult[]>;
+  /**
+   * Result returned for each `.rpc(fnName, args)` call, keyed by function
+   * name. Same reuse/array rules as tableResults above.
+   */
+  rpcResults?: Record<string, TableResult | TableResult[]>;
 }
 
 export interface FakeSupabaseClient {
   auth: { getUser: ReturnType<typeof vi.fn> };
   from: ReturnType<typeof vi.fn>;
+  rpc: ReturnType<typeof vi.fn>;
   /** Every builder created per table, in call order, for assertions. */
   builders: Record<string, FakeQueryBuilder[]>;
+  /** Every `.rpc()` call, in call order, for assertions. */
+  rpcCalls: RecordedCall[];
 }
 
 const DEFAULT_RESULT: TableResult = { data: null, error: null };
@@ -112,6 +121,8 @@ export function createFakeSupabase(
   options: FakeSupabaseOptions = {},
 ): FakeSupabaseClient {
   const builders: Record<string, FakeQueryBuilder[]> = {};
+  const rpcCallCounts: Record<string, number> = {};
+  const rpcCalls: RecordedCall[] = [];
 
   const from = vi.fn((table: string) => {
     const configured = options.tableResults?.[table];
@@ -127,10 +138,24 @@ export function createFakeSupabase(
     return builder;
   });
 
+  const rpc = vi.fn((fnName: string, args?: unknown) => {
+    rpcCalls.push({ method: fnName, args: [args] });
+    const configured = options.rpcResults?.[fnName];
+    let result: TableResult;
+    if (Array.isArray(configured)) {
+      const callIndex = rpcCallCounts[fnName] ?? 0;
+      result = configured[Math.min(callIndex, configured.length - 1)];
+    } else {
+      result = configured ?? DEFAULT_RESULT;
+    }
+    rpcCallCounts[fnName] = (rpcCallCounts[fnName] ?? 0) + 1;
+    return Promise.resolve(result);
+  });
+
   const getUser = vi.fn().mockResolvedValue({
     data: { user: options.user ?? null },
     error: options.authError ?? null,
   });
 
-  return { auth: { getUser }, from, builders };
+  return { auth: { getUser }, from, rpc, builders, rpcCalls };
 }
