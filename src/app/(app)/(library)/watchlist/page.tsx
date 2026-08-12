@@ -23,13 +23,15 @@ interface UserTitleRow {
 export default async function WatchlistPage() {
   const supabase = await createClient();
 
-  const [{ data }, favoriteIds] = await Promise.all([
+  const [{ data, error }, favoriteIds] = await Promise.all([
     supabase
       .from("user_titles")
       .select("titles(id, title, poster_url, media_type, source, source_id)")
       .eq("status", "watchlist"),
     getFavoriteTitleIds(supabase),
   ]);
+
+  if (error) throw error;
 
   const rows = (data ?? []) as unknown as UserTitleRow[];
 

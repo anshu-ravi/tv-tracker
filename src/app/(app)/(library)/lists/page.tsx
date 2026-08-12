@@ -24,9 +24,11 @@ const THUMBNAIL_LIMIT = 4;
 export default async function ListsPage() {
   const supabase = await createClient();
 
-  const { data: listRowsData } = await supabase
+  const { data: listRowsData, error: listRowsError } = await supabase
     .from("lists")
     .select("id, name, is_favorites");
+
+  if (listRowsError) throw listRowsError;
 
   const lists = (listRowsData ?? []) as ListRow[];
   const listIds = lists.map((l) => l.id);
@@ -35,10 +37,12 @@ export default async function ListsPage() {
   const thumbnails = new Map<string, string[]>();
 
   if (listIds.length > 0) {
-    const { data: membershipData } = await supabase
+    const { data: membershipData, error: membershipError } = await supabase
       .from("list_titles")
       .select("list_id, title_id, titles(poster_url)")
       .in("list_id", listIds);
+
+    if (membershipError) throw membershipError;
 
     const memberships = (membershipData ?? []) as unknown as ListTitleRow[];
     for (const m of memberships) {

@@ -99,7 +99,7 @@ export default async function TitleDetailPage({
   const { titleId } = await params;
   const supabase = await createClient();
 
-  const { data: titleData } = await supabase
+  const { data: titleData, error: titleError } = await supabase
     .from("titles")
     .select(
       "id, source, source_id, media_type, title, overview, poster_url, backdrop_url, is_running, first_air_date, total_episodes, next_episode_air_date, next_episode_label, filler_available",
@@ -107,27 +107,38 @@ export default async function TitleDetailPage({
     .eq("id", titleId)
     .maybeSingle();
 
+  // Check the error BEFORE treating a null row as "not found" — a genuine
+  // query failure must surface as an error page, not a false 404.
+  if (titleError) throw titleError;
+
   const title = titleData as TitleRow | null;
   if (!title) notFound();
 
-  const [{ data: userTitleData }, { data: episodesData }, { data: watchedData }] =
-    await Promise.all([
-      supabase
-        .from("user_titles")
-        .select("status")
-        .eq("title_id", titleId)
-        .maybeSingle(),
-      supabase
-        .from("episodes")
-        .select(
-          "id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name",
-        )
-        .eq("title_id", titleId)
-        .order("season_number", { ascending: true })
-        .order("episode_number", { ascending: true }),
-      // RLS already scopes watched_episodes to the signed-in user.
-      supabase.from("watched_episodes").select("episode_id").eq("title_id", titleId),
-    ]);
+  const [
+    { data: userTitleData, error: userTitleError },
+    { data: episodesData, error: episodesError },
+    { data: watchedData, error: watchedError },
+  ] = await Promise.all([
+    supabase
+      .from("user_titles")
+      .select("status")
+      .eq("title_id", titleId)
+      .maybeSingle(),
+    supabase
+      .from("episodes")
+      .select(
+        "id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name",
+      )
+      .eq("title_id", titleId)
+      .order("season_number", { ascending: true })
+      .order("episode_number", { ascending: true }),
+    // RLS already scopes watched_episodes to the signed-in user.
+    supabase.from("watched_episodes").select("episode_id").eq("title_id", titleId),
+  ]);
+
+  if (userTitleError) throw userTitleError;
+  if (episodesError) throw episodesError;
+  if (watchedError) throw watchedError;
 
   const status = (userTitleData as { status: WatchStatus } | null)?.status ?? null;
   // ↑ null is only possible for a title that lost its user_titles row

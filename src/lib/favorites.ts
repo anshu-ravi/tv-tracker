@@ -8,6 +8,14 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
 
+// Audited for the perf/instant-navigation pass: this intentionally still
+// swallows errors and returns an empty Set rather than throwing. Unlike the
+// page-level queries this feeds (BucketedGridPage, WatchlistPage — both of
+// which DO throw on their own query errors), a failure here only means
+// every title on screen renders as "not favorited" — a cosmetic
+// degradation, not the empty-vs-error ambiguity that was the actual "Home
+// doesn't load" bug. Throwing here would take down an otherwise-successful
+// grid render over a heart icon.
 export async function getFavoriteTitleIds(supabase: SupabaseClient): Promise<Set<string>> {
   const { data: favList, error: listError } = await supabase
     .from("lists")
