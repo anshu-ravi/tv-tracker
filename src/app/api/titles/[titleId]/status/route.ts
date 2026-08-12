@@ -43,6 +43,33 @@ export async function PATCH(
     );
   }
 
+  // Movies have no "watching" bucket (see CLAUDE.md's movies product
+  // decision) — POST /api/titles rejects this on add, but a title already
+  // in the catalog can also be moved between buckets here, so the same rule
+  // has to be enforced on this path too, not just at add-time.
+  if (status === "watching") {
+    const { data: titleRow, error: titleLookupError } = await supabase
+      .from("titles")
+      .select("media_type")
+      .eq("id", titleId)
+      .maybeSingle();
+
+    if (titleLookupError) {
+      console.error("Failed to look up title media_type:", titleLookupError);
+      return NextResponse.json(
+        { error: "Failed to update status" },
+        { status: 500 },
+      );
+    }
+
+    if (titleRow?.media_type === "movie") {
+      return NextResponse.json(
+        { error: "Movies cannot be added to Watching" },
+        { status: 400 },
+      );
+    }
+  }
+
   // Look up the current status first so we know whether this change is
   // entering or leaving "completed" (drives the watched_episodes sync below).
   const { data: current, error: currentError } = await supabase
