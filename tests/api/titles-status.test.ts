@@ -137,6 +137,39 @@ describe("PATCH /api/titles/:titleId/status", () => {
     expect(eqCalls).toEqual([{ method: "eq", args: ["title_id", "title-1"] }]);
   });
 
+  it("rejects moving a movie to watching with 400, without touching user_titles", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        titles: { data: { media_type: "movie" }, error: null },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
+    const response = await callPatch("movie-title-1", { status: "watching" });
+
+    expect(response.status).toBe(400);
+    expect(fake.builders.user_titles).toBeUndefined();
+  });
+
+  it("allows moving a tv title to watching (titles lookup only guards movies)", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        titles: { data: { media_type: "tv" }, error: null },
+        user_titles: {
+          data: { title_id: "title-1", status: "watching" },
+          error: null,
+        },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
+    const response = await callPatch("title-1", { status: "watching" });
+
+    expect(response.status).toBe(200);
+  });
+
   it("returns 404 when the title is not in the caller's list", async () => {
     const fake = createFakeSupabase({
       user: { id: "user-1" },

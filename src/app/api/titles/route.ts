@@ -43,6 +43,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Movies have no "watching" bucket — a movie is either on the watchlist,
+  // completed, or dnf (see CLAUDE.md's movies product decision). Enforced
+  // here, not just in UI, since this route is the write path for every add
+  // source (search, lists, favorites all funnel through ensureCatalogTitle,
+  // but the bucket itself is only ever set here).
+  if (mediaType === "movie" && status === "watching") {
+    return NextResponse.json(
+      { error: "Movies cannot be added to Watching" },
+      { status: 400 },
+    );
+  }
+
   const catalogResult = await ensureCatalogTitle(supabase, {
     source,
     sourceId,

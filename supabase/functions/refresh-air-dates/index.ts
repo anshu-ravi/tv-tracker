@@ -60,6 +60,7 @@
 // mirrors — keep them in sync by hand when either changes.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { shouldSkipRefresh } from "./mediaTypeGuard.ts";
 
 // ---- types mirroring the app's catalog (src/lib/types.ts, snake_case) -------
 
@@ -219,9 +220,14 @@ interface RunSummary {
 
 async function refreshOne(row: TitleRow, summary: RunSummary): Promise<void> {
   try {
-    // Movies aren't handled by this job (no episodes/next-episode concept yet
-    // — schema reserves room per CLAUDE.md, but movies are deferred).
-    if (row.media_type === "movie") return;
+    // Movies are now real catalog rows (see
+    // supabase/migrations/20260812090000_movies_synthetic_episode.sql /
+    // src/lib/api/catalog.ts) but this job is TMDB /tv-only and has no
+    // concept of a movie's single synthetic episode row or next-episode
+    // date — see mediaTypeGuard.ts for why this check exists and is kept
+    // this narrow. Skipped titles still count toward `processed` (see the
+    // `finally` block below) but never toward `updated`.
+    if (shouldSkipRefresh(row.media_type)) return;
 
     const result = await refreshTvTitle(row);
 

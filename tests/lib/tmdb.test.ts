@@ -212,6 +212,173 @@ describe("getTvTitle", () => {
   });
 });
 
+describe("searchMovie", () => {
+  it("returns [] without calling fetch for an empty query", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { searchMovie } = await import("@/lib/tmdb");
+
+    const results = await searchMovie("   ");
+
+    expect(results).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps TMDB movie search results (title/release_date, not name/first_air_date) to SearchResult shape", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        results: [
+          {
+            id: 27205,
+            title: "Inception",
+            release_date: "2010-07-15",
+            poster_path: "/poster.jpg",
+            overview: "A thief who steals corporate secrets.",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { searchMovie } = await import("@/lib/tmdb");
+
+    const results = await searchMovie("inception");
+
+    expect(results).toEqual([
+      {
+        source: "tmdb",
+        sourceId: "27205",
+        mediaType: "movie",
+        title: "Inception",
+        year: 2010,
+        posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+        overview: "A thief who steals corporate secrets.",
+      },
+    ]);
+
+    const requestedUrl = String(fetchMock.mock.calls[0][0]);
+    expect(requestedUrl).toContain("/search/movie");
+  });
+});
+
+describe("getMovieTitle", () => {
+  const movieResponse = {
+    id: 27205,
+    title: "Inception",
+    original_title: "Inception",
+    overview: "A thief who steals corporate secrets.",
+    poster_path: "/poster.jpg",
+    backdrop_path: "/backdrop.jpg",
+    release_date: "2010-07-15",
+    runtime: 148,
+    status: "Released",
+  };
+
+  it("normalizes TMDB's movie field names (title/release_date/runtime, no seasons) onto NormalizedTitle", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(movieResponse)));
+    const { getMovieTitle } = await import("@/lib/tmdb");
+
+    const { title } = await getMovieTitle("27205");
+
+    expect(title).toEqual({
+      source: "tmdb",
+      sourceId: "27205",
+      mediaType: "movie",
+      title: "Inception",
+      originalTitle: "Inception",
+      posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/w780/backdrop.jpg",
+      overview: "A thief who steals corporate secrets.",
+      firstAirDate: "2010-07-15",
+      releaseStatus: "Released",
+      isRunning: false,
+      totalEpisodes: null,
+      nextEpisodeAirDate: null,
+      nextEpisodeLabel: null,
+    });
+  });
+
+  it("maps the movie's release date and top-level runtime onto a single NormalizedMovieEpisode, never a season/episode number", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(movieResponse)));
+    const { getMovieTitle } = await import("@/lib/tmdb");
+
+    const { episode } = await getMovieTitle("27205");
+
+    expect(episode).toEqual({
+      name: "Inception",
+      overview: "A thief who steals corporate secrets.",
+      airDate: "2010-07-15",
+      stillUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+      runtime: 148,
+    });
+    expect(episode).not.toHaveProperty("seasonNumber");
+    expect(episode).not.toHaveProperty("episodeNumber");
+  });
+
+  it("is never marked isRunning, regardless of TMDB movie status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ ...movieResponse, status: "In Production" })),
+    );
+    const { getMovieTitle } = await import("@/lib/tmdb");
+
+    const { title } = await getMovieTitle("27205");
+
+    expect(title.isRunning).toBe(false);
+  });
+});
+
+describe("getMovieCredits", () => {
+  it("pulls directors from credits.crew (job === Director), not created_by", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          id: 27205,
+          title: "Inception",
+          credits: {
+            crew: [
+              { name: "Christopher Nolan", job: "Director" },
+              { name: "Emma Thomas", job: "Producer" },
+            ],
+            cast: [
+              { name: "Leonardo DiCaprio", character: "Cobb", profile_path: "/dicaprio.jpg", order: 0 },
+            ],
+          },
+        }),
+      ),
+    );
+    const { getMovieCredits } = await import("@/lib/tmdb");
+
+    const credits = await getMovieCredits("27205");
+
+    expect(credits.creators).toEqual(["Christopher Nolan"]);
+    expect(credits.cast).toEqual([
+      { name: "Leonardo DiCaprio", role: "Cobb", imageUrl: "https://image.tmdb.org/t/p/w185/dicaprio.jpg" },
+    ]);
+  });
+});
+
+describe("getMovieImdbId", () => {
+  it("hits /movie/{id}/external_ids and returns imdb_id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ imdb_id: "tt1375666" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { getMovieImdbId } = await import("@/lib/tmdb");
+
+    const imdbId = await getMovieImdbId("27205");
+
+    expect(imdbId).toBe("tt1375666");
+    const requestedUrl = String(fetchMock.mock.calls[0][0]);
+    expect(requestedUrl).toContain("/movie/27205/external_ids");
+  });
+
+  it("returns null when TMDB has no imdb_id for the movie", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ imdb_id: null })));
+    const { getMovieImdbId } = await import("@/lib/tmdb");
+
+    expect(await getMovieImdbId("27205")).toBeNull();
+  });
+});
+
 describe("getTrending", () => {
   const trendingResponse = {
     results: [

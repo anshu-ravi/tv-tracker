@@ -2,6 +2,7 @@ import "server-only";
 import type {
   MediaType,
   NormalizedEpisode,
+  NormalizedMovieEpisode,
   NormalizedTitle,
   SearchResult,
   TitleCredits,
@@ -326,6 +327,148 @@ export async function getTvCredits(id: string): Promise<TitleCredits> {
 // TMDB's external_ids endpoint returns null when a show has no IMDb entry.
 export async function getTvImdbId(id: string): Promise<string | null> {
   const data = await tmdb<{ imdb_id: string | null }>(`/tv/${id}/external_ids`);
+  return data.imdb_id || null;
+}
+
+// ---- movies -------------------------------------------------------------------
+//
+// TMDB's /movie endpoints use different field names than /tv (see below) and
+// have no concept of seasons/episodes, so these are deliberately separate
+// functions rather than a mediaType branch bolted onto the /tv helpers above.
+//
+// Field-name differences from the /tv shapes used above:
+//   name              -> title            (and original_name -> original_title)
+//   first_air_date    -> release_date
+//   number_of_episodes / seasons / next_episode_to_air -> none; a movie has a
+//     single top-level `runtime` (minutes) instead of a per-episode runtime
+//   created_by (array of {name}) -> no equivalent field; directors come from
+//     credits.crew filtered to job === "Director"
+//   status vocabulary differs: TV uses "Returning Series"/"Ended"/etc, movies
+//     use "Rumored"/"Planned"/"In Production"/"Post Production"/"Released"/
+//     "Canceled" — none of which mean "currently airing", so isRunning is
+//     always false for a movie (see the product decision in lib/api/catalog.ts:
+//     movies never appear on Home / Upcoming and have no "watching" bucket)
+//   /movie/{id}/external_ids has the same { imdb_id } shape as /tv's, just at
+//     a different path
+
+interface TmdbSearchMovieResult {
+  id: number;
+  title: string;
+  release_date: string | null;
+  poster_path: string | null;
+  overview: string | null;
+}
+
+interface TmdbMovie {
+  id: number;
+  title: string;
+  original_title: string;
+  overview: string | null;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  release_date: string | null;
+  runtime: number | null;
+  status: string;
+}
+
+interface TmdbMovieCredits {
+  crew: { name: string; job: string }[];
+  cast: {
+    name: string;
+    character: string | null;
+    profile_path: string | null;
+    order: number;
+  }[];
+}
+
+export async function searchMovie(query: string): Promise<SearchResult[]> {
+  if (!query.trim()) return [];
+  const data = await tmdb<{ results: TmdbSearchMovieResult[] }>(
+    "/search/movie",
+    { query, include_adult: "false" },
+  );
+  return data.results.slice(0, 12).map((r) => ({
+    source: "tmdb",
+    sourceId: String(r.id),
+    mediaType: "movie",
+    title: r.title,
+    year: r.release_date ? Number(r.release_date.slice(0, 4)) : null,
+    posterUrl: img(r.poster_path),
+    overview: r.overview,
+  }));
+}
+
+// Movies map onto a NormalizedTitle plus a single NormalizedMovieEpisode
+// (not an array) — see the type's doc comment in lib/types.ts for why this
+// isn't NormalizedEpisode with nulled-out season/episode numbers. The
+// release date is mapped onto both titles.first_air_date (so the catalog's
+// existing "year" display keeps working across media types) and the
+// synthetic episode's air_date; runtime maps onto the synthetic episode's
+// runtime column.
+export async function getMovieTitle(
+  id: string,
+  opts: { fresh?: boolean } = {},
+): Promise<{ title: NormalizedTitle; episode: NormalizedMovieEpisode }> {
+  const movie = await tmdb<TmdbMovie>(`/movie/${id}`, {}, opts);
+
+  const title: NormalizedTitle = {
+    source: "tmdb",
+    sourceId: String(movie.id),
+    mediaType: "movie",
+    title: movie.title,
+    originalTitle: movie.original_title,
+    posterUrl: img(movie.poster_path),
+    backdropUrl: img(movie.backdrop_path, "w780"),
+    overview: movie.overview,
+    firstAirDate: movie.release_date || null,
+    releaseStatus: movie.status,
+    isRunning: false,
+    totalEpisodes: null,
+    nextEpisodeAirDate: null,
+    nextEpisodeLabel: null,
+  };
+
+  const episode: NormalizedMovieEpisode = {
+    name: movie.title,
+    overview: movie.overview,
+    airDate: movie.release_date || null,
+    stillUrl: img(movie.poster_path),
+    runtime: movie.runtime,
+  };
+
+  return { title, episode };
+}
+
+// Director(s) + top cast for the detail screen. Movies have no created_by
+// field — directors come from credits.crew (job === "Director") instead.
+export async function getMovieCredits(id: string): Promise<TitleCredits> {
+  const movie = await tmdb<TmdbMovie & { credits?: TmdbMovieCredits }>(
+    `/movie/${id}`,
+    { append_to_response: "credits" },
+  );
+
+  const creators = (movie.credits?.crew ?? [])
+    .filter((c) => c.job === "Director")
+    .map((c) => c.name);
+  const cast = (movie.credits?.cast ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .slice(0, 10)
+    .map((c) => ({
+      name: c.name,
+      role: c.character,
+      imageUrl: img(c.profile_path, "w185"),
+    }));
+
+  return { creators, cast };
+}
+
+// IMDb id for a movie, used to look up OMDb ratings (see lib/ratings.ts).
+// Same response shape as getTvImdbId, different path.
+export async function getMovieImdbId(id: string): Promise<string | null> {
+  const data = await tmdb<{ imdb_id: string | null }>(
+    `/movie/${id}/external_ids`,
+  );
   return data.imdb_id || null;
 }
 

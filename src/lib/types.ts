@@ -34,6 +34,21 @@ export interface NormalizedEpisode {
   runtime?: number | null;
 }
 
+// A movie's watched-state is a single synthetic episode row with NULL
+// season_number/episode_number (see
+// supabase/migrations/20260812090000_movies_synthetic_episode.sql) — never
+// season 1 / episode 1. Kept as its own shape rather than widening
+// NormalizedEpisode.seasonNumber/episodeNumber to `number | null`, which
+// would force every TV/anime call site (episode lists, season grouping) to
+// re-guard against a case that can never happen for them.
+export interface NormalizedMovieEpisode {
+  name?: string | null;
+  overview?: string | null;
+  airDate?: string | null; // ISO date — the movie's release date
+  stillUrl?: string | null;
+  runtime?: number | null;
+}
+
 // Creator/cast info for the title detail screen. Fetched on demand straight
 // from the provider (not stored in the DB — see lib/tmdb.ts), so a missing
 // or malformed credits response should map to empty arrays rather than

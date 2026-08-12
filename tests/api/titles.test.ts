@@ -1,15 +1,23 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeSupabase } from "../helpers/fakeSupabase";
-import type { NormalizedEpisode, NormalizedTitle } from "@/lib/types";
+import type {
+  NormalizedEpisode,
+  NormalizedMovieEpisode,
+  NormalizedTitle,
+} from "@/lib/types";
 
-const { mockCreateClient, mockGetTvTitle } = vi.hoisted(() => ({
+const { mockCreateClient, mockGetTvTitle, mockGetMovieTitle } = vi.hoisted(() => ({
   mockCreateClient: vi.fn(),
   mockGetTvTitle: vi.fn(),
+  mockGetMovieTitle: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mockCreateClient }));
-vi.mock("@/lib/tmdb", () => ({ getTvTitle: mockGetTvTitle }));
+vi.mock("@/lib/tmdb", () => ({
+  getTvTitle: mockGetTvTitle,
+  getMovieTitle: mockGetMovieTitle,
+}));
 
 const normalizedTitle: NormalizedTitle = {
   source: "tmdb",
@@ -24,10 +32,30 @@ const normalizedEpisodes: NormalizedEpisode[] = [
   { seasonNumber: 1, episodeNumber: 2 },
 ];
 
+const normalizedMovieTitle: NormalizedTitle = {
+  source: "tmdb",
+  sourceId: "27205",
+  mediaType: "movie",
+  title: "Inception",
+  isRunning: false,
+};
+
+const normalizedMovieEpisode: NormalizedMovieEpisode = {
+  name: "Inception",
+  overview: "A thief who steals corporate secrets.",
+  airDate: "2010-07-15",
+  stillUrl: null,
+  runtime: 148,
+};
+
 beforeEach(() => {
   mockGetTvTitle.mockResolvedValue({
     title: normalizedTitle,
     episodes: normalizedEpisodes,
+  });
+  mockGetMovieTitle.mockResolvedValue({
+    title: normalizedMovieTitle,
+    episode: normalizedMovieEpisode,
   });
 });
 
@@ -78,22 +106,91 @@ describe("POST /api/titles", () => {
     expect(mockGetTvTitle).not.toHaveBeenCalled();
   });
 
-  it("rejects an unsupported source/mediaType combination with 400", async () => {
+  it("rejects a genuinely unsupported source/mediaType combination with 400", async () => {
     mockCreateClient.mockResolvedValue(
       createFakeSupabase({ user: { id: "user-1" } }),
     );
 
-    // tv and anime are both TMDB-only (AniList has been retired — see
-    // classifyTmdbSearchResult in lib/tmdb.ts); movies have no provider
-    // client yet, so this combination is genuinely unsupported.
+    // tv, anime, and movie are all TMDB-only now (AniList has been retired
+    // — see classifyTmdbSearchResult in lib/tmdb.ts). "anilist" is the one
+    // remaining combination with no provider client.
+    const response = await callPost({
+      source: "anilist",
+      sourceId: "42",
+      mediaType: "anime",
+      status: "watching",
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockGetTvTitle).not.toHaveBeenCalled();
+    expect(mockGetMovieTitle).not.toHaveBeenCalled();
+  });
+
+  // Movies were unconditionally rejected as "unsupported" until this
+  // branch — this used to be the same test as above (movie + tmdb posted
+  // as the 400 case) until HANDOFF.md flagged that test as having quietly
+  // stopped testing anything once movies became a real, supported
+  // combination. It now asserts the success path instead; the rejection
+  // that still legitimately applies to movies (no "watching" bucket) has
+  // its own test below.
+  it("adds a movie via getMovieTitle and returns 201 for a supported bucket", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        titles: { data: { id: "movie-title-1" }, error: null },
+        user_titles: {
+          data: { title_id: "movie-title-1", status: "watchlist" },
+          error: null,
+        },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
     const response = await callPost({
       source: "tmdb",
-      sourceId: "42",
+      sourceId: "27205",
+      mediaType: "movie",
+      status: "watchlist",
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(mockGetMovieTitle).toHaveBeenCalledWith("27205");
+    expect(mockGetTvTitle).not.toHaveBeenCalled();
+    expect(body.titleId).toBe("movie-title-1");
+
+    // Movies go through upsert_movie_episode (an RPC — PostgREST can't
+    // target the partial unique index that protects the single synthetic
+    // NULL-coordinate episode row via .upsert(onConflict:...)), never the
+    // regular "episodes" table upsert used for tv/anime.
+    expect(fake.rpc).toHaveBeenCalledWith("upsert_movie_episode", {
+      p_title_id: "movie-title-1",
+      p_name: "Inception",
+      p_overview: "A thief who steals corporate secrets.",
+      p_air_date: "2010-07-15",
+      p_still_url: null,
+      p_runtime: 148,
+    });
+    expect(fake.builders.episodes).toBeUndefined();
+  });
+
+  it("rejects a movie with status watching with 400, before touching the catalog", async () => {
+    mockCreateClient.mockResolvedValue(
+      createFakeSupabase({ user: { id: "user-1" } }),
+    );
+
+    // Product decision: movies have no "watching" bucket (watchlist /
+    // completed / dnf only) — see CLAUDE.md. Enforced server-side, not just
+    // in UI.
+    const response = await callPost({
+      source: "tmdb",
+      sourceId: "27205",
       mediaType: "movie",
       status: "watching",
     });
 
     expect(response.status).toBe(400);
+    expect(mockGetMovieTitle).not.toHaveBeenCalled();
   });
 
   it("fetches details, upserts titles/episodes/user_titles, and returns 201", async () => {
