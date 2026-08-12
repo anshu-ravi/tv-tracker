@@ -29,6 +29,13 @@ export const metadata: Metadata = {
 // Pinch-zoom is deliberately disabled per the user's request, on top of the
 // 16px form-control font-size fix in globals.css that already stops iOS's
 // auto-zoom-on-focus.
+//
+// `interactiveWidget: "resizes-content"` tells iOS Safari to shrink the
+// layout viewport (rather than overlay or shift it) when the software
+// keyboard opens — e.g. focusing the Search tab's input. Combined with the
+// app shell in (app)/layout.tsx (no `position: fixed`, `<main>` as the sole
+// scroller), this keeps the docked bottom nav from being pushed around or
+// left stranded when the keyboard appears.
 export const viewport: Viewport = {
   themeColor: "#f3eedf",
   width: "device-width",
@@ -36,6 +43,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
