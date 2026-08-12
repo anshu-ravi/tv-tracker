@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { getTvCredits } from "@/lib/tmdb";
-import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
 import { getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
@@ -29,6 +28,13 @@ interface TitleRow {
   total_episodes: number | null;
   next_episode_air_date: string | null;
   next_episode_label: string | null;
+  // Anime-only, set by the nightly refresh (supabase/functions/
+  // refresh-air-dates/) after attempting an animefillerlist.com lookup —
+  // see the migration that added these columns for the full three-state
+  // contract. Null means "not yet checked" (e.g. added since the last
+  // refresh), which must render the same as false — never fabricate the
+  // "unclassified" dash for a title we haven't actually checked.
+  filler_available: boolean | null;
 }
 
 interface EpisodeRow {
@@ -39,6 +45,39 @@ interface EpisodeRow {
   name: string | null;
   air_date: string | null;
   overview: string | null;
+  filler_type: "canon" | "filler" | "mixed" | null;
+  filler_name: string | null;
+}
+
+// Per-episode filler tag + "unclassified" dash display, factored out for unit
+// testing without a Supabase round trip. Encodes the three-state contract
+// from the migration that added these columns:
+//   - fillerAvailable is null or false -> this title has no upstream
+//     animefillerlist page at all -> { fillerType: undefined, fillerUnclassified: false }
+//     (no tag element renders).
+//   - fillerAvailable is true but this episode's fillerType is null -> the
+//     title HAS a page but this episode isn't classified there ->
+//     { fillerType: undefined, fillerUnclassified: true } (quiet dash).
+//   - fillerAvailable is true and fillerType is set -> the tag renders.
+// fillerAvailable === null means "the nightly refresh hasn't checked this
+// title yet" (e.g. added since the last run) and must NOT trigger the dash —
+// that would fabricate a claim nothing has actually verified.
+export function resolveEpisodeFillerDisplay(
+  fillerAvailable: boolean | null,
+  fillerType: "canon" | "filler" | "mixed" | null,
+): { fillerType: "canon" | "filler" | "mixed" | undefined; fillerUnclassified: boolean } {
+  return {
+    fillerType: fillerType ?? undefined,
+    fillerUnclassified: fillerAvailable === true && !fillerType,
+  };
+}
+
+// TMDB's name wins; animefillerlist's is only a fallback when TMDB gave us
+// nothing — the OPPOSITE precedence from Home's resolveAnimeNextEpisodeDisplay
+// (src/app/(app)/page.tsx), which prefers animefillerlist's name. Both pages
+// keep the precedence the pre-existing live-scrape version had.
+export function resolveEpisodeName(tmdbName: string | null, fillerName: string | null): string | null {
+  return tmdbName || fillerName || null;
 }
 
 function formatDate(iso: string | null): string | null {
@@ -63,7 +102,7 @@ export default async function TitleDetailPage({
   const { data: titleData } = await supabase
     .from("titles")
     .select(
-      "id, source, source_id, media_type, title, overview, poster_url, backdrop_url, is_running, first_air_date, total_episodes, next_episode_air_date, next_episode_label",
+      "id, source, source_id, media_type, title, overview, poster_url, backdrop_url, is_running, first_air_date, total_episodes, next_episode_air_date, next_episode_label, filler_available",
     )
     .eq("id", titleId)
     .maybeSingle();
@@ -80,7 +119,9 @@ export default async function TitleDetailPage({
         .maybeSingle(),
       supabase
         .from("episodes")
-        .select("id, season_number, episode_number, absolute_number, name, air_date, overview")
+        .select(
+          "id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name",
+        )
         .eq("title_id", titleId)
         .order("season_number", { ascending: true })
         .order("episode_number", { ascending: true }),
@@ -115,35 +156,30 @@ export default async function TitleDetailPage({
     console.error("Failed to fetch ratings:", err);
   }
 
-  // Anime-only: episode names + canon/filler/mixed tags from
-  // animefillerlist.com, keyed by episode number there (which lines up with
-  // our absolute_number). getAnimeFillerData already swallows its own
-  // errors/no-match and returns null, so this never breaks the page.
-  const fillerData: Map<number, EpisodeFiller> | null =
-    title.media_type === "anime" ? await getAnimeFillerData(title.title) : null;
-
   // Group episodes by season, preserving the query's season/episode order,
   // and shape each row down to what the client EpisodeSection needs (it
   // formats dates itself so this stays plain data, no server-only bits).
+  //
+  // filler_type/filler_name come from the nightly refresh's animefillerlist.com
+  // scrape (supabase/functions/refresh-air-dates/), not a live fetch here —
+  // see the migration that added these columns. Name precedence is the
+  // opposite of Home's: TMDB's name wins, filler_name is only a fallback
+  // when TMDB gave us nothing (unchanged from the old live-scrape version).
   const seasonNumbers = Array.from(new Set(episodes.map((e) => e.season_number)));
   const seasons: SeasonGroup[] = seasonNumbers.map((seasonNumber) => ({
     seasonNumber,
     episodes: episodes
       .filter((e) => e.season_number === seasonNumber)
       .map((e) => {
-        const filler = fillerData?.get(e.absolute_number ?? e.episode_number);
+        const filler = resolveEpisodeFillerDisplay(title.filler_available, e.filler_type);
         return {
           id: e.id,
           episodeNumber: e.episode_number,
           absoluteNumber: e.absolute_number,
-          name: e.name || filler?.name || null,
+          name: resolveEpisodeName(e.name, e.filler_name),
           airLabel: formatDate(e.air_date),
-          fillerType: filler?.type,
-          // fillerData is only non-null when animefillerlist had *some*
-          // classification for this title, so a miss here means "not yet
-          // tagged upstream", not "no source" — the detail list renders
-          // that distinctly (quiet dash) instead of nothing.
-          fillerUnclassified: fillerData != null && !filler,
+          fillerType: filler.fillerType,
+          fillerUnclassified: filler.fillerUnclassified,
           overview: e.overview,
         };
       }),
