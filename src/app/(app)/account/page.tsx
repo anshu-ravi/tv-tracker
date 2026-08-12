@@ -34,7 +34,10 @@ export default async function AccountPage() {
   // supabase/migrations/*_refresh_runs.sql. Two schedules means one "last
   // refreshed" reading would be ambiguous, so each scope is fetched and
   // shown separately.
-  const [{ data: latestRunningRun }, { data: latestAllRun }] = await Promise.all([
+  const [
+    { data: latestRunningRun, error: latestRunningRunError },
+    { data: latestAllRun, error: latestAllRunError },
+  ] = await Promise.all([
     supabase
       .from("refresh_runs")
       .select("finished_at, error_count")
@@ -50,6 +53,9 @@ export default async function AccountPage() {
       .limit(1)
       .maybeSingle(),
   ]);
+
+  if (latestRunningRunError) throw latestRunningRunError;
+  if (latestAllRunError) throw latestAllRunError;
 
   const lastRunningRun = toSummary(latestRunningRun as RefreshRunRow | null);
   const lastAllRun = toSummary(latestAllRun as RefreshRunRow | null);

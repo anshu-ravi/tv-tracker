@@ -24,9 +24,11 @@ export default async function SearchPage() {
   // Pull the caller's whole library (id, source, source_id, status) up front
   // so SearchClient can flag "already in your library" — and link to its
   // detail page — without a round trip per result.
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("user_titles")
     .select("status, titles(id, source, source_id)");
+
+  if (error) throw error;
 
   const rows = (data ?? []) as unknown as UserTitleRow[];
 

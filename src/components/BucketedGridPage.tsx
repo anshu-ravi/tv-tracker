@@ -37,7 +37,7 @@ export default async function BucketedGridPage({
   // `titles!inner` + a filter on the embedded resource restricts to rows
   // whose joined title actually matches this media_type (an inner join, not
   // left), so a tv-only user never sees stray anime rows here.
-  const [{ data }, favoriteIds] = await Promise.all([
+  const [{ data, error }, favoriteIds] = await Promise.all([
     supabase
       .from("user_titles")
       .select(
@@ -46,6 +46,10 @@ export default async function BucketedGridPage({
       .eq("titles.media_type", mediaType),
     getFavoriteTitleIds(supabase),
   ]);
+
+  // A failed query must surface as an error, not silently render the empty
+  // state — the two are otherwise indistinguishable on screen.
+  if (error) throw error;
 
   const rows = (data ?? []) as unknown as UserTitleRow[];
 

@@ -59,21 +59,35 @@ export default async function PreviewPage({
   // Cheap existing-library check first: if this title is already tracked,
   // send the user straight to the real (writable, DB-backed) detail page
   // instead of re-rendering a read-only copy of it.
+  // Both lookups below are a best-effort short-circuit ("is this title
+  // already tracked? if so, send the user to the real DB-backed page
+  // instead"), not this page's primary data source (that's the live TMDB
+  // fetch further down). A failure here is logged and intentionally
+  // swallowed rather than thrown — the rest of the page still renders a
+  // fully working read-only preview from TMDB either way, so failing the
+  // whole page over this optimization would make things worse, not better.
   const supabase = await createClient();
-  const { data: existingTitle } = await supabase
+  const { data: existingTitle, error: existingTitleError } = await supabase
     .from("titles")
     .select("id")
     .eq("source", dataSource)
     .eq("source_id", sourceId)
     .maybeSingle();
 
+  if (existingTitleError) {
+    console.error("Preview: failed to look up existing title:", existingTitleError);
+  }
+
   if (existingTitle) {
     const existingId = (existingTitle as { id: string }).id;
-    const { data: userTitle } = await supabase
+    const { data: userTitle, error: userTitleError } = await supabase
       .from("user_titles")
       .select("status")
       .eq("title_id", existingId)
       .maybeSingle();
+    if (userTitleError) {
+      console.error("Preview: failed to look up user_titles status:", userTitleError);
+    }
     if (userTitle) redirect(`/title/${existingId}`);
   }
 

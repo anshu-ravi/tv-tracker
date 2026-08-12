@@ -22,15 +22,19 @@ interface UserTitleRow {
   titles: TitleRow | null;
 }
 
+// Note: no `overview` column here — this Home query drives progress counts
+// and next-episode selection for every "watching" title (Bleach alone is
+// 400+ episodes), so it deliberately excludes the one column that's only
+// ever displayed for a single row (the next-unwatched episode). Overview is
+// fetched separately, by id, only for the episodes that end up as a card's
+// next-up episode — see nextEpisodeOverviewById below.
 interface EpisodeRow {
   id: string;
   title_id: string;
   season_number: number;
   episode_number: number;
-  absolute_number: number | null;
   name: string | null;
   air_date: string | null;
-  overview: string | null;
   // Anime-only, populated by the nightly refresh (supabase/functions/
   // refresh-air-dates/) from animefillerlist.com — see the migration that
   // added these columns. Both null for TV, and for anime episodes the
@@ -132,7 +136,10 @@ export default async function HomePage() {
 
   // RLS already scopes these to the signed-in user, so no explicit user_id
   // filter is needed — just the bucket(s).
-  const [{ data: watchingTitlesData }, { data: upcomingTitlesData }] = await Promise.all([
+  const [
+    { data: watchingTitlesData, error: watchingTitlesError },
+    { data: upcomingTitlesData, error: upcomingTitlesError },
+  ] = await Promise.all([
     supabase
       .from("user_titles")
       .select(
@@ -146,6 +153,13 @@ export default async function HomePage() {
       )
       .in("status", ["watching", "watchlist"]),
   ]);
+
+  // A failed query must surface as an error (caught by the nearest
+  // error.tsx boundary) — never fall through and render as an empty
+  // library, which is indistinguishable on screen from a genuinely empty
+  // one. See CLAUDE.md / HANDOFF for the "Home doesn't load" root cause.
+  if (watchingTitlesError) throw watchingTitlesError;
+  if (upcomingTitlesError) throw upcomingTitlesError;
 
   const userTitles = (watchingTitlesData ?? []) as unknown as UserTitleRow[];
   const watchingTitles = userTitles.filter(
@@ -187,11 +201,14 @@ export default async function HomePage() {
 
   const titleIds = watchingTitles.map((ut) => ut.title_id);
 
-  const [{ data: episodesData }, { data: watchedData }] = await Promise.all([
+  const [
+    { data: episodesData, error: episodesError },
+    { data: watchedData, error: watchedError },
+  ] = await Promise.all([
     supabase
       .from("episodes")
       .select(
-        "id, title_id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name",
+        "id, title_id, season_number, episode_number, name, air_date, filler_type, filler_name",
       )
       .in("title_id", titleIds)
       .order("season_number", { ascending: true })
@@ -201,6 +218,9 @@ export default async function HomePage() {
       .select("episode_id, title_id, watched_at")
       .in("title_id", titleIds),
   ]);
+
+  if (episodesError) throw episodesError;
+  if (watchedError) throw watchedError;
 
   const episodes = (episodesData ?? []) as unknown as EpisodeRow[];
   const watched = (watchedData ?? []) as unknown as WatchedEpisodeRow[];
@@ -258,8 +278,6 @@ export default async function HomePage() {
 
     const nextEpisodeName = animeDisplay ? animeDisplay.name : nextEpisode.name;
 
-    const nextEpisodeOverview = nextEpisode.overview ?? null;
-
     // Scope progress to the season of the next-unwatched episode. Anime now
     // gets this too (it has real seasons via the TMDB migration, same as
     // TV) — "22 / 26" series-wide means little to a viewer mid-season,
@@ -293,7 +311,9 @@ export default async function HomePage() {
       nextEpisodeCode,
       nextEpisodeName,
       nextEpisodeFillerType,
-      nextEpisodeOverview,
+      // Patched in below from a second, narrow query — see
+      // nextEpisodeOverviewById.
+      nextEpisodeOverview: null,
       nextEpisodeAirDate: nextEpisode.air_date,
       bucket,
       seasonNumber,
@@ -302,6 +322,36 @@ export default async function HomePage() {
     };
     })
     .filter((card): card is WatchingCardData => card !== null);
+
+  // Overview is only ever displayed for a single episode per card (the
+  // next-unwatched one), so it's fetched here — by id, on this small set —
+  // rather than as part of the episodes query above, which spans every
+  // episode of every "watching" title.
+  const nextEpisodeIds = cards
+    .map((card) => card.nextUnwatchedEpisodeId)
+    .filter((id): id is string => id !== null);
+
+  if (nextEpisodeIds.length > 0) {
+    const { data: overviewData, error: overviewError } = await supabase
+      .from("episodes")
+      .select("id, overview")
+      .in("id", nextEpisodeIds);
+
+    if (overviewError) throw overviewError;
+
+    const overviewById = new Map(
+      ((overviewData ?? []) as { id: string; overview: string | null }[]).map((row) => [
+        row.id,
+        row.overview,
+      ]),
+    );
+
+    for (const card of cards) {
+      if (card.nextUnwatchedEpisodeId) {
+        card.nextEpisodeOverview = overviewById.get(card.nextUnwatchedEpisodeId) ?? null;
+      }
+    }
+  }
 
   return <HomeTabs watching={cards} upcoming={upcoming} displayName={displayName} />;
 }

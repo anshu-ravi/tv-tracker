@@ -42,11 +42,15 @@ export default async function ListDetailPage({
   // RLS scopes `lists` to the caller's own rows, so a listId belonging to
   // someone else (impossible today, single-user, but future-proof) or a
   // bogus id both come back empty here — either way, 404.
-  const { data: listData } = await supabase
+  const { data: listData, error: listError } = await supabase
     .from("lists")
     .select("id, name, is_favorites")
     .eq("id", listId)
     .maybeSingle();
+
+  // Check the error BEFORE treating a null row as "not found" — a genuine
+  // query failure must surface as an error page, not a false 404.
+  if (listError) throw listError;
 
   const list = listData as ListRow | null;
   if (!list) notFound();
@@ -54,7 +58,10 @@ export default async function ListDetailPage({
   // The list's own members, and (in parallel) the user's whole tracked
   // library — the latter is the candidate pool for "＋ Add shows" once
   // members already in this list are filtered out below.
-  const [{ data: titlesData }, { data: libraryData }] = await Promise.all([
+  const [
+    { data: titlesData, error: titlesError },
+    { data: libraryData, error: libraryError },
+  ] = await Promise.all([
     supabase
       .from("list_titles")
       .select("title_id, titles(id, title, poster_url, media_type, source, source_id)")
@@ -63,6 +70,9 @@ export default async function ListDetailPage({
       .from("user_titles")
       .select("titles(id, title, poster_url, media_type, source, source_id)"),
   ]);
+
+  if (titlesError) throw titlesError;
+  if (libraryError) throw libraryError;
 
   const rows = (titlesData ?? []) as unknown as ListTitleRow[];
   const titles: PosterCardTitle[] = rows
