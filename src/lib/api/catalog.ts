@@ -10,11 +10,12 @@
 // provider that title already came from. Used to backfill catalog rows that
 // were only partially populated (e.g. the one-time Trakt import only wrote
 // episodes the user had actually watched — see scripts/refresh-catalog/).
-import { getTvTitle } from "@/lib/tmdb";
+import { getMovieTitle, getTvTitle } from "@/lib/tmdb";
 import type {
   DataSource,
   MediaType,
   NormalizedEpisode,
+  NormalizedMovieEpisode,
   NormalizedTitle,
 } from "@/lib/types";
 
@@ -34,20 +35,14 @@ export type EnsureCatalogTitleResult =
   | { titleId: string }
   | { error: string; status: number };
 
-// Upserts the catalog title row (unique on source, source_id) and its
-// episodes (unique on title_id, season_number, episode_number) from an
-// already-fetched provider response. Shared by ensureCatalogTitle (new or
-// existing title, resolved from a provider triple) and refreshCatalogTitle
-// (an existing titles.id, re-fetched) so the write path only lives once.
-async function upsertTitleAndEpisodes(
+// Upserts just the titles row (unique on source, source_id) — shared by the
+// TV/anime path below (upsertTitleAndEpisodes) and the movie path
+// (upsertMovieTitleAndEpisode), which otherwise diverge entirely on how
+// they write episodes.
+async function upsertTitleRow(
   supabase: SupabaseClient,
-  fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] },
-): Promise<
-  | { titleId: string; title: NormalizedTitle; episodesUpserted: number }
-  | { error: string; status: number }
-> {
-  const { title, episodes } = fetched;
-
+  title: NormalizedTitle,
+): Promise<{ titleId: string } | { error: string; status: number }> {
   const { data: titleRow, error: titleError } = await supabase
     .from("titles")
     .upsert(
@@ -77,7 +72,26 @@ async function upsertTitleAndEpisodes(
     return { error: "Failed to save title", status: 500 };
   }
 
-  const titleId = titleRow.id as string;
+  return { titleId: titleRow.id as string };
+}
+
+// Upserts the catalog title row and its episodes (unique on title_id,
+// season_number, episode_number) from an already-fetched TV/anime provider
+// response. Shared by ensureCatalogTitle (new or existing title, resolved
+// from a provider triple) and refreshCatalogTitle (an existing titles.id,
+// re-fetched) so the write path only lives once.
+async function upsertTitleAndEpisodes(
+  supabase: SupabaseClient,
+  fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] },
+): Promise<
+  | { titleId: string; title: NormalizedTitle; episodesUpserted: number }
+  | { error: string; status: number }
+> {
+  const { title, episodes } = fetched;
+
+  const titleResult = await upsertTitleRow(supabase, title);
+  if ("error" in titleResult) return titleResult;
+  const { titleId } = titleResult;
 
   // Upsert episodes for this title. Anime rows carry absoluteNumber and use
   // season 1. A refresh can add whole new seasons here (that's the point —
@@ -118,6 +132,49 @@ async function upsertTitleAndEpisodes(
   return { titleId, title, episodesUpserted: episodes.length };
 }
 
+// Upserts the catalog title row and its single synthetic NULL-coordinate
+// episode row for a movie (see
+// supabase/migrations/20260812090000_movies_synthetic_episode.sql). The
+// regular episodes .upsert(onConflict: "title_id,season_number,episode_number")
+// above can't be reused here — a movie's episode row has NULL season/episode
+// numbers, so it's protected by a *partial* unique index
+// (episodes_movie_single_row, `where season_number is null`) instead, and
+// PostgREST's onConflict can only target a full unique constraint/index by
+// column list, not a partial one. `upsert_movie_episode` is a SQL function
+// (SECURITY INVOKER, so RLS still applies under the caller's own privileges)
+// that does the equivalent `insert ... on conflict (title_id) where
+// season_number is null do update ...` — the one SQL shape that partial
+// index requires.
+async function upsertMovieTitleAndEpisode(
+  supabase: SupabaseClient,
+  fetched: { title: NormalizedTitle; episode: NormalizedMovieEpisode },
+): Promise<
+  | { titleId: string; title: NormalizedTitle; episodesUpserted: number }
+  | { error: string; status: number }
+> {
+  const { title, episode } = fetched;
+
+  const titleResult = await upsertTitleRow(supabase, title);
+  if ("error" in titleResult) return titleResult;
+  const { titleId } = titleResult;
+
+  const { error: episodeError } = await supabase.rpc("upsert_movie_episode", {
+    p_title_id: titleId,
+    p_name: episode.name ?? null,
+    p_overview: episode.overview ?? null,
+    p_air_date: episode.airDate ?? null,
+    p_still_url: episode.stillUrl ?? null,
+    p_runtime: episode.runtime ?? null,
+  });
+
+  if (episodeError) {
+    console.error("Failed to upsert movie episode:", episodeError);
+    return { error: "Failed to save episode", status: 500 };
+  }
+
+  return { titleId, title, episodesUpserted: 1 };
+}
+
 export async function ensureCatalogTitle(
   supabase: SupabaseClient,
   { source, sourceId, mediaType }: EnsureCatalogTitleInput,
@@ -126,22 +183,30 @@ export async function ensureCatalogTitle(
     return { error: "source, sourceId, and mediaType are required", status: 400 };
   }
 
-  // tv and anime are both TMDB-only (search only ever returns tmdb-sourced
-  // results — see classifyTmdbSearchResult in lib/tmdb.ts). Movies are
-  // reserved in the schema but have no provider client yet.
-  let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
+  // tv, anime, and movie are all TMDB-only (search only ever returns
+  // tmdb-sourced results — see classifyTmdbSearchResult in lib/tmdb.ts).
   if (mediaType === "tv" && source === "tmdb") {
-    fetched = await getTvTitle(sourceId);
-  } else if (mediaType === "anime" && source === "tmdb") {
-    fetched = await getTvTitle(sourceId, { mediaType: "anime" });
-  } else {
-    return { error: "Unsupported source/mediaType combination", status: 400 };
+    const fetched = await getTvTitle(sourceId);
+    const result = await upsertTitleAndEpisodes(supabase, fetched);
+    if ("error" in result) return result;
+    return { titleId: result.titleId };
   }
 
-  const result = await upsertTitleAndEpisodes(supabase, fetched);
-  if ("error" in result) return result;
+  if (mediaType === "anime" && source === "tmdb") {
+    const fetched = await getTvTitle(sourceId, { mediaType: "anime" });
+    const result = await upsertTitleAndEpisodes(supabase, fetched);
+    if ("error" in result) return result;
+    return { titleId: result.titleId };
+  }
 
-  return { titleId: result.titleId };
+  if (mediaType === "movie" && source === "tmdb") {
+    const fetched = await getMovieTitle(sourceId);
+    const result = await upsertMovieTitleAndEpisode(supabase, fetched);
+    if ("error" in result) return result;
+    return { titleId: result.titleId };
+  }
+
+  return { error: "Unsupported source/mediaType combination", status: 400 };
 }
 
 // ---- refresh -----------------------------------------------------------
@@ -178,11 +243,29 @@ export async function refreshCatalogTitle(
 
   const row = data as TitleLookupRow;
 
+  // { fresh: true } bypasses TMDB's hour-long HTTP cache (see lib/tmdb.ts)
+  // — a refresh exists specifically to see current data.
+  if (row.media_type === "movie" && row.source === "tmdb") {
+    let fetched: { title: NormalizedTitle; episode: NormalizedMovieEpisode };
+    try {
+      fetched = await getMovieTitle(row.source_id, { fresh: true });
+    } catch (err) {
+      console.error("Failed to fetch movie from provider for refresh:", err);
+      return { error: "Failed to fetch title from provider", status: 502 };
+    }
+
+    const result = await upsertMovieTitleAndEpisode(supabase, fetched);
+    if ("error" in result) return result;
+    return {
+      titleId: result.titleId,
+      title: result.title.title,
+      episodesUpserted: result.episodesUpserted,
+    };
+  }
+
   let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
   try {
     if (row.media_type === "tv" && row.source === "tmdb") {
-      // { fresh: true } bypasses TMDB's hour-long HTTP cache (see
-      // lib/tmdb.ts) — a refresh exists specifically to see current data.
       fetched = await getTvTitle(row.source_id, { fresh: true });
     } else if (row.media_type === "anime" && row.source === "tmdb") {
       // Same TMDB path as tv, just with mediaType: "anime" so
