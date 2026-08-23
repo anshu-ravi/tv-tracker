@@ -3,69 +3,50 @@ import HomeTabs, { type UpcomingItem } from "@/components/HomeTabs";
 import { type WatchingCardData } from "@/components/WatchingCard";
 import type { MediaType } from "@/lib/types";
 
-// --- Row shapes for the untyped Supabase client -----------------------------
-// No generated Database types exist yet, so `.select()` results come back
-// loosely typed; these interfaces describe exactly the columns we ask for and
-// the results get cast to them once, right after the query.
+// --- Row shapes for the get_home_payload() RPC ------------------------------
+// public.get_home_payload() (see supabase/migrations) does the data fetching
+// in one round trip: resolving each "watching" title's next-unwatched-aired
+// episode, progress counts, and season-scoped progress; and the raw
+// candidates for the Upcoming tab. These interfaces describe its jsonb shape
+// (camelCase keys, chosen to match 1:1) after the single `.rpc()` cast below.
 
-interface TitleRow {
-  id: string;
+interface HomeWatchingRow {
+  titleId: string;
   title: string;
-  media_type: MediaType;
-  poster_url: string | null;
-  next_episode_air_date: string | null;
-  next_episode_label: string | null;
-}
-
-interface UserTitleRow {
-  title_id: string;
-  titles: TitleRow | null;
-}
-
-// Note: no `overview` column here — this Home query drives progress counts
-// and next-episode selection for every "watching" title (Bleach alone is
-// 400+ episodes), so it deliberately excludes the one column that's only
-// ever displayed for a single row (the next-unwatched episode). Overview is
-// fetched separately, by id, only for the episodes that end up as a card's
-// next-up episode — see nextEpisodeOverviewById below.
-interface EpisodeRow {
-  id: string;
-  title_id: string;
-  season_number: number;
-  episode_number: number;
-  name: string | null;
-  air_date: string | null;
+  posterUrl: string | null;
+  mediaType: MediaType;
+  watchedCount: number;
+  totalCount: number;
+  nextEpisodeId: string;
+  nextEpisodeSeasonNumber: number | null;
+  nextEpisodeNumber: number | null;
+  nextEpisodeName: string | null;
+  nextEpisodeOverview: string | null;
+  nextEpisodeAirDate: string | null;
   // Anime-only, populated by the nightly refresh (supabase/functions/
-  // refresh-air-dates/) from animefillerlist.com — see the migration that
-  // added these columns. Both null for TV, and for anime episodes the
-  // refresh hasn't classified (no upstream page, or page found but this
-  // episode isn't tagged there yet).
-  filler_type: "canon" | "filler" | "mixed" | null;
-  filler_name: string | null;
+  // refresh-air-dates/) from animefillerlist.com — see resolveAnimeNextEpisodeDisplay
+  // below. Both null for TV, and for anime episodes the refresh hasn't
+  // classified yet.
+  nextEpisodeFillerType: "canon" | "filler" | "mixed" | null;
+  nextEpisodeFillerName: string | null;
+  seasonWatchedCount: number;
+  seasonTotalCount: number;
+  lastWatchedAt: string | null;
 }
 
-interface WatchedEpisodeRow {
-  episode_id: string;
-  title_id: string;
-  watched_at: string;
-}
-
-// Upcoming tab's title shape — a superset of TitleRow's fields plus
-// first_air_date, queried separately since it spans both the "watching" and
-// "watchlist" buckets (TitleRow above is only fetched for "watching").
-interface UpcomingTitleRow {
-  id: string;
+interface HomeUpcomingRow {
+  titleId: string;
   title: string;
-  media_type: MediaType;
-  poster_url: string | null;
-  first_air_date: string | null;
-  next_episode_air_date: string | null;
-  next_episode_label: string | null;
+  mediaType: MediaType;
+  posterUrl: string | null;
+  firstAirDate: string | null;
+  nextEpisodeAirDate: string | null;
+  nextEpisodeLabel: string | null;
 }
 
-interface UpcomingUserTitleRow {
-  title_id: string;
-  titles: UpcomingTitleRow | null;
+interface HomePayload {
+  watching: HomeWatchingRow[];
+  upcoming: HomeUpcomingRow[];
 }
 
 // Whole-day difference between two ISO (YYYY-MM-DD) dates, computed from UTC
@@ -129,58 +110,28 @@ export default async function HomePage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const displayName: string = user?.user_metadata?.display_name ?? "";
+  // getClaims() verifies the JWT locally against the cached JWKS instead of
+  // calling out to the Auth server (see src/lib/supabase/middleware.ts for
+  // the same switch) — user_metadata and email are standard GoTrue access
+  // token claims and this project has no custom access token hook that
+  // would strip them.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const displayName: string = claimsData?.claims?.user_metadata?.display_name ?? "";
 
-  // RLS already scopes these to the signed-in user, so no explicit user_id
-  // filter is needed — just the bucket(s).
-  const [
-    { data: watchingTitlesData, error: watchingTitlesError },
-    { data: upcomingTitlesData, error: upcomingTitlesError },
-  ] = await Promise.all([
-    supabase
-      .from("user_titles")
-      .select(
-        "title_id, titles(id, title, media_type, poster_url, next_episode_air_date, next_episode_label)",
-      )
-      .eq("status", "watching"),
-    supabase
-      .from("user_titles")
-      .select(
-        "title_id, titles(id, title, media_type, poster_url, first_air_date, next_episode_air_date, next_episode_label)",
-      )
-      .in("status", ["watching", "watchlist"]),
-  ]);
+  // Single round trip: get_home_payload() resolves next-unwatched-episode,
+  // progress counts and season-scoped progress for every "watching" title,
+  // plus the raw Upcoming candidates, all server-side. RLS on user_titles/
+  // watched_episodes scopes it to the caller automatically.
+  const { data, error } = await supabase.rpc("get_home_payload", { p_today: today });
+  if (error) throw error;
+  const payload = data as HomePayload;
 
-  // A failed query must surface as an error (caught by the nearest
-  // error.tsx boundary) — never fall through and render as an empty
-  // library, which is indistinguishable on screen from a genuinely empty
-  // one. See CLAUDE.md / HANDOFF for the "Home doesn't load" root cause.
-  if (watchingTitlesError) throw watchingTitlesError;
-  if (upcomingTitlesError) throw upcomingTitlesError;
-
-  const userTitles = (watchingTitlesData ?? []) as unknown as UserTitleRow[];
-  const watchingTitles = userTitles.filter(
-    (ut): ut is UserTitleRow & { titles: TitleRow } => ut.titles !== null,
-  );
-
-  // ---- Upcoming dataset -----------------------------------------------------
-  const upcomingUserTitles = (upcomingTitlesData ?? []) as unknown as UpcomingUserTitleRow[];
-  const upcoming: UpcomingItem[] = upcomingUserTitles
-    .filter((ut): ut is UpcomingUserTitleRow & { titles: UpcomingTitleRow } => ut.titles !== null)
-    .map((ut): UpcomingItem | null => {
-      const title = ut.titles;
-      // Movies never belong on Upcoming (see the product decision in
-      // lib/tmdb.ts around getMovieTitle) — but a movie's first_air_date
-      // (its release date) is one of the two fallback candidates below, so
-      // a watchlisted movie with a future release date would otherwise
-      // wrongly surface here as if it had an upcoming episode.
-      if (title.media_type === "movie") return null;
+  // ---- Upcoming dataset -------------------------------------------------
+  const upcoming: UpcomingItem[] = payload.upcoming
+    .map((row): UpcomingItem | null => {
       const candidates = [
-        { date: title.next_episode_air_date, label: title.next_episode_label },
-        { date: title.first_air_date, label: null as string | null },
+        { date: row.nextEpisodeAirDate, label: row.nextEpisodeLabel },
+        { date: row.firstAirDate, label: null as string | null },
       ].filter((c): c is { date: string; label: string | null } => !!c.date && c.date >= today);
 
       if (candidates.length === 0) return null;
@@ -188,10 +139,10 @@ export default async function HomePage() {
       const soonest = candidates.reduce((a, b) => (b.date < a.date ? b : a));
 
       return {
-        titleId: ut.title_id,
-        title: title.title,
-        posterUrl: title.poster_url,
-        mediaType: title.media_type,
+        titleId: row.titleId,
+        title: row.title,
+        posterUrl: row.posterUrl,
+        mediaType: row.mediaType,
         airDate: soonest.date,
         daysUntil: daysBetween(today, soonest.date),
         episodeLabel: soonest.label,
@@ -200,164 +151,46 @@ export default async function HomePage() {
     .filter((item): item is UpcomingItem => item !== null)
     .sort((a, b) => (a.airDate < b.airDate ? -1 : a.airDate > b.airDate ? 1 : 0));
 
-  // ---- Currently Watching dataset --------------------------------------------
-  if (watchingTitles.length === 0) {
-    return <HomeTabs watching={[]} upcoming={upcoming} displayName={displayName} />;
-  }
-
-  const titleIds = watchingTitles.map((ut) => ut.title_id);
-
-  const [
-    { data: episodesData, error: episodesError },
-    { data: watchedData, error: watchedError },
-  ] = await Promise.all([
-    supabase
-      .from("episodes")
-      .select(
-        "id, title_id, season_number, episode_number, name, air_date, filler_type, filler_name",
-      )
-      .in("title_id", titleIds)
-      .order("season_number", { ascending: true })
-      .order("episode_number", { ascending: true }),
-    supabase
-      .from("watched_episodes")
-      .select("episode_id, title_id, watched_at")
-      .in("title_id", titleIds),
-  ]);
-
-  if (episodesError) throw episodesError;
-  if (watchedError) throw watchedError;
-
-  const episodes = (episodesData ?? []) as unknown as EpisodeRow[];
-  const watched = (watchedData ?? []) as unknown as WatchedEpisodeRow[];
-  const watchedIds = new Set(watched.map((w) => w.episode_id));
-
-  // Most recent watched_at per title, used to bucket Currently Watching into
-  // "up next" vs "catch up" by the owner's own activity (see
-  // classifyBucket/CATCHUP_THRESHOLD_DAYS above).
-  const lastWatchByTitleId = new Map<string, string>();
-  for (const w of watched) {
-    const current = lastWatchByTitleId.get(w.title_id);
-    if (!current || w.watched_at > current) {
-      lastWatchByTitleId.set(w.title_id, w.watched_at);
-    }
-  }
-
-  const cards = watchingTitles
-    .map((ut): WatchingCardData | null => {
-    const title = ut.titles;
-    const titleEpisodes = episodes.filter((e) => e.title_id === ut.title_id);
-    const watchedCount = titleEpisodes.filter((e) => watchedIds.has(e.id)).length;
-
-    // "Next unwatched aired episode": earliest by (season, episode) that
-    // isn't already marked watched and has aired (or carries no air date,
-    // which we treat as already available rather than blocking on it).
-    const nextEpisode = titleEpisodes.find(
-      (e) => !watchedIds.has(e.id) && (!e.air_date || e.air_date <= today),
-    );
-
-    // Nothing aired-but-unwatched left: the show is fully caught up on what
-    // exists so far. It has no place in Currently Watching — if a future
-    // episode is scheduled it'll surface on the Upcoming tab instead, which
-    // is computed separately above. Signal that with a null return, filtered
-    // out below.
-    if (!nextEpisode) return null;
-
+  // ---- Currently Watching dataset -----------------------------------------
+  // A title with no next-unwatched-aired episode is already omitted by the
+  // RPC (fully caught up -- see get_home_payload's next_ep CTE), same as the
+  // old code's null-and-filter.
+  const cards: WatchingCardData[] = payload.watching.map((row) => {
     // Anime-only display (tag + name precedence) — see
     // resolveAnimeNextEpisodeDisplay above.
     const animeDisplay =
-      title.media_type === "anime"
-        ? resolveAnimeNextEpisodeDisplay(
-            nextEpisode.filler_type,
-            nextEpisode.filler_name,
-            nextEpisode.name,
-          )
+      row.mediaType === "anime"
+        ? resolveAnimeNextEpisodeDisplay(row.nextEpisodeFillerType, row.nextEpisodeFillerName, row.nextEpisodeName)
         : null;
     const nextEpisodeFillerType = animeDisplay?.fillerType;
 
-    // Anime now uses the same SxxEyy format as TV (owner decision — consistent
-    // naming across the app, see CLAUDE.md). This also degrades sensibly for
-    // anime rows the TMDB migration hasn't reached yet: those are still
-    // season_number 1 with episode_number === absolute_number, so it just
-    // renders "S1E43" instead of the old "E43" rather than needing a branch.
-    const nextEpisodeCode = `S${nextEpisode.season_number}E${nextEpisode.episode_number}`;
-
-    const nextEpisodeName = animeDisplay ? animeDisplay.name : nextEpisode.name;
-
-    // Scope progress to the season of the next-unwatched episode. Anime now
-    // gets this too (it has real seasons via the TMDB migration, same as
-    // TV) — "22 / 26" series-wide means little to a viewer mid-season,
-    // "S3 · 5 / 8" says exactly where they are. For anime rows the
-    // migration hasn't reached yet, every episode is still season 1, so
-    // this naturally reduces to the series-wide total — no separate branch
-    // needed.
-    const seasonNumber: number | null = nextEpisode.season_number;
-    const seasonEpisodes = titleEpisodes.filter(
-      (e) => e.season_number === nextEpisode.season_number,
-    );
-    const seasonWatchedCount: number | null = seasonEpisodes.filter((e) =>
-      watchedIds.has(e.id),
-    ).length;
-    const seasonTotalCount: number | null = seasonEpisodes.length;
+    // Anime uses the same SxxEyy format as TV (owner decision — consistent
+    // naming across the app, see CLAUDE.md).
+    const nextEpisodeCode = `S${row.nextEpisodeSeasonNumber}E${row.nextEpisodeNumber}`;
+    const nextEpisodeName = animeDisplay ? animeDisplay.name : row.nextEpisodeName;
 
     // Days since the owner last marked ANY episode of this title watched
-    // (null if never). Past the threshold, this show has been neglected
-    // long enough to move out of "Up Next" and into the "Catch Up"
-    // carousel — regardless of when the next unwatched episode itself aired.
-    const lastWatchedAt = lastWatchByTitleId.get(ut.title_id) ?? null;
-    const bucket: WatchingCardData["bucket"] = classifyBucket(lastWatchedAt, today);
+    // (null if never) — see classifyBucket/CATCHUP_THRESHOLD_DAYS above.
+    const bucket = classifyBucket(row.lastWatchedAt, today);
 
     return {
-      titleId: ut.title_id,
-      title: title.title,
-      posterUrl: title.poster_url,
-      watchedCount,
-      totalCount: titleEpisodes.length,
-      nextUnwatchedEpisodeId: nextEpisode.id,
+      titleId: row.titleId,
+      title: row.title,
+      posterUrl: row.posterUrl,
+      watchedCount: row.watchedCount,
+      totalCount: row.totalCount,
+      nextUnwatchedEpisodeId: row.nextEpisodeId,
       nextEpisodeCode,
       nextEpisodeName,
       nextEpisodeFillerType,
-      // Patched in below from a second, narrow query — see
-      // nextEpisodeOverviewById.
-      nextEpisodeOverview: null,
-      nextEpisodeAirDate: nextEpisode.air_date,
+      nextEpisodeOverview: row.nextEpisodeOverview,
+      nextEpisodeAirDate: row.nextEpisodeAirDate,
       bucket,
-      seasonNumber,
-      seasonWatchedCount,
-      seasonTotalCount,
+      seasonNumber: row.nextEpisodeSeasonNumber,
+      seasonWatchedCount: row.seasonWatchedCount,
+      seasonTotalCount: row.seasonTotalCount,
     };
-    })
-    .filter((card): card is WatchingCardData => card !== null);
-
-  // Overview is only ever displayed for a single episode per card (the
-  // next-unwatched one), so it's fetched here — by id, on this small set —
-  // rather than as part of the episodes query above, which spans every
-  // episode of every "watching" title.
-  const nextEpisodeIds = cards
-    .map((card) => card.nextUnwatchedEpisodeId)
-    .filter((id): id is string => id !== null);
-
-  if (nextEpisodeIds.length > 0) {
-    const { data: overviewData, error: overviewError } = await supabase
-      .from("episodes")
-      .select("id, overview")
-      .in("id", nextEpisodeIds);
-
-    if (overviewError) throw overviewError;
-
-    const overviewById = new Map(
-      ((overviewData ?? []) as { id: string; overview: string | null }[]).map((row) => [
-        row.id,
-        row.overview,
-      ]),
-    );
-
-    for (const card of cards) {
-      if (card.nextUnwatchedEpisodeId) {
-        card.nextEpisodeOverview = overviewById.get(card.nextUnwatchedEpisodeId) ?? null;
-      }
-    }
-  }
+  });
 
   return <HomeTabs watching={cards} upcoming={upcoming} displayName={displayName} />;
 }
