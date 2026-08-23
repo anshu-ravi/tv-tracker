@@ -10,7 +10,7 @@ function item(overrides: Partial<RateQueueItem> = {}): RateQueueItem {
     title: "Title",
     year: 2020,
     posterUrl: null,
-    status: "watchlist",
+    status: "completed",
     rating: null,
     isFavorite: false,
     ...overrides,
@@ -27,30 +27,45 @@ describe("buildRateQueue", () => {
     expect(queue.map((i) => i.titleId)).toEqual(["unrated"]);
   });
 
-  it("orders completed before watching before dnf before watchlist", () => {
-    const watchlist = item({ titleId: "a", title: "A", status: "watchlist" });
+  it("orders completed before watching before dnf", () => {
     const dnf = item({ titleId: "b", title: "B", status: "dnf" });
     const watching = item({ titleId: "c", title: "C", status: "watching" });
     const completed = item({ titleId: "d", title: "D", status: "completed" });
 
-    const queue = buildRateQueue([watchlist, dnf, watching, completed]);
+    const queue = buildRateQueue([dnf, watching, completed]);
 
-    expect(queue.map((i) => i.titleId)).toEqual(["d", "c", "b", "a"]);
+    expect(queue.map((i) => i.titleId)).toEqual(["d", "c", "b"]);
   });
 
-  it("boosts a favorite above plain watching/dnf, on par with completed", () => {
-    const favoritedWatchlist = item({
-      titleId: "fav-watchlist",
+  it("boosts a favorited dnf above plain completed, watching, and dnf", () => {
+    // dnf(1) + FAVORITE_BOOST(3) = 4, ahead of plain completed's 3.
+    const favoritedDnf = item({
+      titleId: "fav-dnf",
       title: "Fav",
-      status: "watchlist",
+      status: "dnf",
       isFavorite: true,
     });
+    const completed = item({ titleId: "completed", title: "Completed", status: "completed" });
     const watching = item({ titleId: "watching", title: "Watching", status: "watching" });
     const dnf = item({ titleId: "dnf", title: "Dnf", status: "dnf" });
 
-    const queue = buildRateQueue([watching, dnf, favoritedWatchlist]);
+    const queue = buildRateQueue([watching, dnf, completed, favoritedDnf]);
 
-    expect(queue[0].titleId).toBe("fav-watchlist");
+    expect(queue[0].titleId).toBe("fav-dnf");
+  });
+
+  it("excludes watchlist items even when unrated and favorited", () => {
+    const watchlist = item({
+      titleId: "watchlist",
+      status: "watchlist",
+      rating: null,
+      isFavorite: true,
+    });
+    const completed = item({ titleId: "completed", status: "completed" });
+
+    const queue = buildRateQueue([watchlist, completed]);
+
+    expect(queue.map((i) => i.titleId)).toEqual(["completed"]);
   });
 
   it("does not exclude any media type", () => {
