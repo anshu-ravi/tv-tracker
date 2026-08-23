@@ -1,5 +1,5 @@
 import SearchResultCard from "@/components/SearchResultCard";
-import type { SearchResult } from "@/lib/types";
+import { titleKey, type SearchResult } from "@/lib/types";
 import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
 
 // One horizontally-scrollable rail of trending results on the Search
@@ -32,24 +32,20 @@ export default function ExploreRail({
       <h2 className="display mb-2 text-lg">{heading}</h2>
       <div className="-mx-4 overflow-x-auto px-4 pb-2">
         <div className="flex w-max snap-x snap-mandatory gap-3">
-          {results.map((result, index) => (
-            <div
-              key={`${result.source}:${result.sourceId}`}
-              className="w-28 shrink-0 snap-start"
-            >
-              <SearchResultCard
-                result={result}
-                existingStatus={
-                  existing[`${result.source}:${result.sourceId}`]?.status
-                }
-                existingTitleId={
-                  existing[`${result.source}:${result.sourceId}`]?.titleId
-                }
-                onAdded={onAdded}
-                priority={isFirstSection && index < 2}
-              />
-            </div>
-          ))}
+          {results.map((result, index) => {
+            const key = titleKey(result.source, result.sourceId, result.mediaType);
+            return (
+              <div key={key} className="w-28 shrink-0 snap-start">
+                <SearchResultCard
+                  result={result}
+                  existingStatus={existing[key]?.status}
+                  existingTitleId={existing[key]?.titleId}
+                  onAdded={onAdded}
+                  priority={isFirstSection && index < 2}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

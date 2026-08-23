@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import SearchClient from "@/components/SearchClient";
-import type { DataSource, WatchStatus } from "@/lib/types";
+import { titleKey, type DataSource, type MediaType, type WatchStatus } from "@/lib/types";
 
 interface TitleRow {
   id: string;
   source: DataSource;
   source_id: string;
+  media_type: MediaType;
 }
 
 interface UserTitleRow {
@@ -26,7 +27,7 @@ export default async function SearchPage() {
   // detail page — without a round trip per result.
   const { data, error } = await supabase
     .from("user_titles")
-    .select("status, titles(id, source, source_id)");
+    .select("status, titles(id, source, source_id, media_type)");
 
   if (error) throw error;
 
@@ -35,7 +36,8 @@ export default async function SearchPage() {
   const existing: Record<string, ExistingLibraryEntry> = {};
   for (const row of rows) {
     if (!row.titles) continue;
-    existing[`${row.titles.source}:${row.titles.source_id}`] = {
+    const key = titleKey(row.titles.source, row.titles.source_id, row.titles.media_type);
+    existing[key] = {
       status: row.status,
       titleId: row.titles.id,
     };

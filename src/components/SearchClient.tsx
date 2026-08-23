@@ -4,16 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SearchResultCard from "@/components/SearchResultCard";
 import ExploreRail from "@/components/ExploreRail";
-import type { SearchResult } from "@/lib/types";
+import { titleKey, type SearchResult } from "@/lib/types";
 import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
 
 const DEBOUNCE_MS = 350;
 const MIN_QUERY_LENGTH = 2;
 
-// Query input + results grid. `existing` maps "source:sourceId" -> the
-// caller's current bucket + catalog title id for that title, computed
-// server-side, so results already in the library render as "In Watching"
-// etc. (linking to the detail page) instead of an add control.
+// Query input + results grid. `existing` maps titleKey(...) -> the caller's
+// current bucket + catalog title id for that title, computed server-side, so
+// results already in the library render as "In Watching" etc. (linking to
+// the detail page) instead of an add control.
 export default function SearchClient({
   existing,
 }: {
@@ -179,19 +179,18 @@ export default function SearchClient({
 
       {!isExploring && !queryTooShort && results.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
-          {results.map((result) => (
-            <SearchResultCard
-              key={`${result.source}:${result.sourceId}`}
-              result={result}
-              existingStatus={
-                existing[`${result.source}:${result.sourceId}`]?.status
-              }
-              existingTitleId={
-                existing[`${result.source}:${result.sourceId}`]?.titleId
-              }
-              onAdded={() => router.refresh()}
-            />
-          ))}
+          {results.map((result) => {
+            const key = titleKey(result.source, result.sourceId, result.mediaType);
+            return (
+              <SearchResultCard
+                key={key}
+                result={result}
+                existingStatus={existing[key]?.status}
+                existingTitleId={existing[key]?.titleId}
+                onAdded={() => router.refresh()}
+              />
+            );
+          })}
         </div>
       )}
     </div>
