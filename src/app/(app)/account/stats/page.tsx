@@ -7,6 +7,7 @@ import TopShows from "@/components/stats/TopShows";
 import ByYear from "@/components/stats/ByYear";
 import StatusDistribution from "@/components/stats/StatusDistribution";
 import FunStats from "@/components/stats/FunStats";
+import Ratings from "@/components/stats/Ratings";
 
 export default async function StatsPage() {
   const supabase = await createClient();
@@ -26,6 +27,7 @@ export default async function StatsPage() {
         <TopShows stats={stats} />
         <ByYear stats={stats} />
         <StatusDistribution stats={stats} />
+        <Ratings stats={stats} />
         <FunStats stats={stats} />
       </div>
     </div>
