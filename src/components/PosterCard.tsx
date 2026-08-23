@@ -77,16 +77,20 @@ export default function PosterCard({
               opposite corner from the kebab (top-right) so the two never
               collide. Only rendered when the caller both passes `status`
               (i.e. this tile is in a known bucket) and it's "completed" —
-              watching/watchlist/dnf tiles never show it. */}
-          {status === "completed" && title.isRunning !== undefined && (
-            <span
-              className={`absolute bottom-1.5 left-1.5 inline-block -rotate-3 border-2 border-ink px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ${
-                title.isRunning ? "bg-acid text-ink" : "bg-ink text-paper"
-              }`}
-            >
-              {title.isRunning ? "Caught up" : "Ended"}
-            </span>
-          )}
+              watching/watchlist/dnf tiles never show it. Movies are excluded
+              too: is_running is always false for a film, so this TV-only
+              "running vs ended" distinction is meaningless there. */}
+          {status === "completed" &&
+            title.mediaType !== "movie" &&
+            title.isRunning !== undefined && (
+              <span
+                className={`absolute bottom-1.5 left-1.5 inline-block -rotate-3 border-2 border-ink px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ${
+                  title.isRunning ? "bg-acid text-ink" : "bg-ink text-paper"
+                }`}
+              >
+                {title.isRunning ? "Caught up" : "Ended"}
+              </span>
+            )}
         </div>
         <p className="truncate px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide">
           {title.title}
