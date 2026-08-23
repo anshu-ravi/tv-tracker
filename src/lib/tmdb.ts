@@ -26,7 +26,10 @@ async function tmdb<T>(
   // Refreshing a title we already have (see catalog.ts refreshCatalogTitle)
   // needs to see TMDB's current data, not whatever Next cached up to an hour
   // ago — pass `{ fresh: true }` to bypass the revalidate cache for that path.
-  opts: { fresh?: boolean } = {},
+  // `revalidate` lets a caller ask for a longer cache than the 1hr default
+  // (e.g. similar-titles below, which barely moves day to day); `fresh`
+  // still wins over it when both would apply.
+  opts: { fresh?: boolean; revalidate?: number } = {},
 ): Promise<T> {
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) {
@@ -36,7 +39,7 @@ async function tmdb<T>(
     headers: authHeaders(),
     ...(opts.fresh
       ? { cache: "no-store" as const }
-      : { next: { revalidate: 60 * 60 } }), // cache metadata for an hour
+      : { next: { revalidate: opts.revalidate ?? 60 * 60 } }),
   });
   if (!res.ok) throw new Error(`TMDB ${path} failed: ${res.status}`);
   return res.json() as Promise<T>;
@@ -61,6 +64,11 @@ interface TmdbSearchTvResult {
   genre_ids?: number[];
   origin_country?: string[];
   original_language?: string;
+  // Used only for ranking (see rankingScore below). Present on
+  // /recommendations and /similar results; not guaranteed elsewhere.
+  vote_count?: number;
+  vote_average?: number;
+  popularity?: number;
 }
 
 interface TmdbTv {
@@ -357,6 +365,11 @@ interface TmdbSearchMovieResult {
   release_date: string | null;
   poster_path: string | null;
   overview: string | null;
+  // Used only for ranking (see rankingScore below). Present on
+  // /recommendations and /similar results; not guaranteed elsewhere.
+  vote_count?: number;
+  vote_average?: number;
+  popularity?: number;
 }
 
 interface TmdbMovie {
@@ -470,6 +483,157 @@ export async function getMovieImdbId(id: string): Promise<string | null> {
     `/movie/${id}/external_ids`,
   );
   return data.imdb_id || null;
+}
+
+// ---- similar titles -----------------------------------------------------------
+//
+// "Similar" rail on both title screens (see components/SimilarRail.tsx).
+// TMDB's /recommendations (derived from aggregate user behaviour) is a much
+// better signal than /similar (pure genre/keyword matching), so
+// recommendations are always the primary source; /similar is only queried
+// as a last resort when recommendations come back thin after ranking, and
+// never overrides a recommendation on an id collision. Cached for 24h —
+// this barely moves day to day.
+//
+// TMDB's /recommendations page order is not quality-ranked (page 1 for a
+// well-known show can be dominated by 2-vote noise), so 3 pages are pulled
+// and re-ranked by rankingScore instead of trusting page 1 alone.
+
+const SIMILAR_MIN_RESULTS = 6;
+// Candidate pool returned from here — deliberately larger than what's shown.
+// api/titles/similar/route.ts partitions this into untracked (cap 12) and
+// tracked (cap 6) groups; that route-level cap is what's authoritative for
+// what actually renders, not this one.
+const SIMILAR_LIBRARY_CAP = 20;
+const SIMILAR_REVALIDATE_SECONDS = 60 * 60 * 24;
+const RECOMMENDATION_PAGES = 3;
+// Minimum vote_count to trust a candidate. Relaxed in order when it would
+// leave too few results — an obscure seed shouldn't end up with an empty
+// rail just because nothing clears 150 votes.
+const VOTE_FLOORS = [150, 50, 0];
+
+// Ranking score for candidate titles — also meant for reuse by a future
+// personalized-recommendations pipeline, not just this rail. Log-scales vote
+// count and popularity so a handful of blockbusters can't drown out
+// otherwise well-reviewed results.
+export function rankingScore(candidate: {
+  vote_count?: number;
+  vote_average?: number;
+  popularity?: number;
+}): number {
+  const voteCount = candidate.vote_count ?? 0;
+  const voteAverage = candidate.vote_average ?? 0;
+  const popularity = candidate.popularity ?? 0;
+  return Math.log10(voteCount + 1) * voteAverage + Math.log10(popularity + 1) * 3;
+}
+
+// Fetches recommendation pages 1..RECOMMENDATION_PAGES in parallel and
+// merges them. A page that fails or doesn't exist is dropped rather than
+// failing the whole call — a title with only one page of recommendations
+// still returns usable results.
+async function fetchRecommendationPages<T>(path: string): Promise<T[]> {
+  const settled = await Promise.allSettled(
+    Array.from({ length: RECOMMENDATION_PAGES }, (_, i) =>
+      tmdb<{ results: T[] }>(path, { page: i + 1 }, { revalidate: SIMILAR_REVALIDATE_SECONDS }),
+    ),
+  );
+  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value.results : []));
+}
+
+function applyVoteFloor<T extends { vote_count?: number }>(candidates: T[]): T[] {
+  let result = candidates;
+  for (const floor of VOTE_FLOORS) {
+    result = candidates.filter((c) => (c.vote_count ?? 0) >= floor);
+    if (result.length >= SIMILAR_MIN_RESULTS) break;
+  }
+  return result;
+}
+
+// Shared candidate-gathering pipeline for getSimilarTv/getSimilarMovie:
+// recommendations (3 pages, poster + vote-floor filtered) ranked by score,
+// topped up from /similar only when that pool is thin. `filterSimilar` lets
+// the anime seed case drop off-genre /similar drift (see getSimilarTv).
+async function gatherSimilarCandidates<
+  T extends {
+    id: number;
+    poster_path: string | null;
+    vote_count?: number;
+    vote_average?: number;
+    popularity?: number;
+  },
+>(
+  recommendationsPath: string,
+  similarPath: string,
+  filterSimilar?: (candidate: T) => boolean,
+): Promise<T[]> {
+  const recs = await fetchRecommendationPages<T>(recommendationsPath);
+  const floored = applyVoteFloor(recs.filter((r) => r.poster_path));
+
+  const seen = new Set(floored.map((r) => r.id));
+  const combined = floored.slice();
+
+  if (combined.length < SIMILAR_MIN_RESULTS) {
+    const similar = await tmdb<{ results: T[] }>(
+      similarPath,
+      {},
+      { revalidate: SIMILAR_REVALIDATE_SECONDS },
+    );
+    let topUp = applyVoteFloor(similar.results.filter((r) => r.poster_path));
+    if (filterSimilar) topUp = topUp.filter(filterSimilar);
+    for (const r of topUp) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      combined.push(r);
+    }
+  }
+
+  combined.sort((a, b) => rankingScore(b) - rankingScore(a));
+  return combined.slice(0, SIMILAR_LIBRARY_CAP);
+}
+
+function toSimilarTvResult(r: TmdbSearchTvResult): SearchResult {
+  return {
+    source: "tmdb",
+    sourceId: String(r.id),
+    mediaType: classifyTmdbSearchResult(r),
+    title: r.name,
+    year: r.first_air_date ? Number(r.first_air_date.slice(0, 4)) : null,
+    posterUrl: img(r.poster_path),
+    overview: r.overview,
+  };
+}
+
+// `seedIsAnime` (the seed title's own classification, from the route's
+// mediaType) drops non-anime /similar results — TMDB's /similar drifts
+// off-genre for anime (e.g. Doctor Who under Bleach) more than
+// /recommendations does, so this only matters for the last-resort top-up.
+export async function getSimilarTv(id: string, seedIsAnime = false): Promise<SearchResult[]> {
+  const candidates = await gatherSimilarCandidates<TmdbSearchTvResult>(
+    `/tv/${id}/recommendations`,
+    `/tv/${id}/similar`,
+    seedIsAnime ? (r) => classifyTmdbSearchResult(r) === "anime" : undefined,
+  );
+  return candidates.map(toSimilarTvResult);
+}
+
+function toSimilarMovieResult(r: TmdbSearchMovieResult): SearchResult {
+  return {
+    source: "tmdb",
+    sourceId: String(r.id),
+    mediaType: "movie",
+    title: r.title,
+    year: r.release_date ? Number(r.release_date.slice(0, 4)) : null,
+    posterUrl: img(r.poster_path),
+    overview: r.overview,
+  };
+}
+
+export async function getSimilarMovie(id: string): Promise<SearchResult[]> {
+  const candidates = await gatherSimilarCandidates<TmdbSearchMovieResult>(
+    `/movie/${id}/recommendations`,
+    `/movie/${id}/similar`,
+  );
+  return candidates.map(toSimilarMovieResult);
 }
 
 // ---- anime enrichment (lib/tmdbAnimeMatch.ts) --------------------------------
