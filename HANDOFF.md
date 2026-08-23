@@ -3,7 +3,7 @@
 Snapshot of where the build stands and where to continue. Pairs with
 `CLAUDE.md` (how to work here) and `context.md` (the why + full scope).
 
-_Updated 2026-08-23 (session 7: Similar rail on both title screens, TMDB recommendation re-ranking). Session 6 and earlier are summarized below and under "What's on `main`"._
+_Updated 2026-08-23 (session 8: latency pass — region pin, RPC collapse, navigation caching; stats expanded onto ratings and movies). Session 7 and earlier are summarized below and under "What's on `main`"._
 
 ## Where we are
 
@@ -18,6 +18,28 @@ Two things changed character this session:
   scheduled — this is the first background automation in the project.
 - **The test suite is trustworthy again.** It was 8-red for two sessions,
   which meant a run couldn't tell you whether *your* change broke something.
+
+### Session-8 changes (on `feat/perf-and-stats`)
+
+A latency pass driven by the owner reporting slow PWA cold start, 1-3s tab switches, and a slow stats page.
+
+- **The root cause was geography, and it is worth remembering.** Production returned `x-vercel-id: cdg1::iad1::...` — Vercel functions executed in `iad1` (Washington DC) while Supabase runs in eu-west-1 (Ireland), so every query in every page render paid a transatlantic round trip. Measured floor: 270-340ms TTFB on `/login`, a page that does one auth call and nothing else. `vercel.json` now pins functions to `dub1`.
+- **The database was never the bottleneck.** The full three-table join over all 6,655 watched rows executes in **10ms**, all buffers warm. A synthetic 50x multiplication of the joined output still finished in 160ms. Round-trip count and payload size were the entire problem — do not reach for materialized views or precomputed stats tables here; see the note below.
+- **Three RPCs replace paged fetch loops** (`supabase/migrations/20260823160000_home_and_stats_rpcs.sql`, `..._watched_aggregates_rpc.sql`). All `SECURITY INVOKER` + `STABLE` + `search_path = ''`, so existing RLS still scopes every read. Stats went 7 round trips to 1, Home 4 waves to 1, the recommendations refresh 7 to 1, favorites 2 to 1. `src/lib/stats.ts` dropped 343 lines to 88.
+- **Home and Account now use `getClaims()` instead of `getUser()`** — the middleware made this switch long ago, the pages never did, so each render made a network call to the auth server. `email` and `user_metadata` are standard un-stripped GoTrue claims.
+- **Navigation**: `prefetch={true}` on BottomNav and LibrarySubnav, plus `experimental.staleTimes` at 30s. Worth knowing: `prefetch={true}` moves a route into the `static` staleTimes bucket (300s default), not `dynamic` — setting only `dynamic` would have done nothing. 30 is the floor Next allows for `static`.
+- **Movies were invisible in stats** — default runtime hardcoded to `0` and excluded from the media split, erasing roughly 105 hours. Now a three-way `byMediaType`.
+- **New ratings section** on the stats page, reading the 156 rated `user_titles` rows stats never touched.
+- Test suite as of this session: **302 passing**.
+
+#### Two things tried and rejected, so they are not retried blind
+
+- **A service worker was built, then removed.** The justification given was that iOS evicts an installed PWA's HTTP cache more aggressively than Cache Storage. WebKit's storage-policy documentation says the opposite: HTTP cache is explicitly *exempt* from the eviction policy that Cache Storage IS subject to. Since the worker only cached content-hashed build assets that already carry immutable cache headers, it was a likely no-op carrying real update-semantics complexity.
+- **`cacheComponents: true` was attempted and reverted.** The build fails immediately — `Uncached data was accessed outside of <Suspense>` on `/title/[titleId]` and `/lists/[listId]`. Every `page.tsx` calls `createClient()` at the top of its body, which reads cookies, so each route's entire content is dynamic with no local Suspense boundary; `loading.tsx` does not satisfy it. Next's own `instant-navigation.md` names "a dashboard layout that reads cookies and fetches user-specific data" as too dynamic for the static-shell machinery. Since 100% of this app's content is per-user RLS data that must stay uncached, the shell could only ever hold chrome that is already static.
+
+#### On precomputing stats
+
+Asked during this session: why not materialize the stats join instead of computing it per request. The answer is that it optimizes the fastest segment — the query is ~10% of the post-fix page budget, the rest being network the user cannot avoid. It also is not free: Postgres does not support RLS on materialized views (a matview refreshes as its owner and would hold every user's rows with no policy attachable), so the safe shape is a real table with `user_id = auth.uid()` policies, refreshed by triggers across five feeding tables or by cron. Triggers tax the mark-watched hot path that was deliberately optimized for instant feedback; cron makes stats stale exactly when you would look at them. Revisit if watch history reaches six figures. The right precompute target, if one is ever needed, is the rendered response, not the join — note that `titles.next_episode_air_date` IS precomputed by cron, because its input is a TMDB network call rather than a local join.
 
 ### Session-7 changes (on `feat/similar-titles`, not yet merged to `main`)
 
@@ -232,7 +254,7 @@ now covers).
 ```bash
 npm run dev      # http://localhost:3000
 npm run build    # prod build (green)
-npm test         # vitest run — 174 passing
+npm test         # vitest run — 302 passing
 npm run lint     # eslint
 ```
 
