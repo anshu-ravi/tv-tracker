@@ -17,20 +17,14 @@ type SupabaseClient = any;
 // doesn't load" bug. Throwing here would take down an otherwise-successful
 // grid render over a heart icon.
 export async function getFavoriteTitleIds(supabase: SupabaseClient): Promise<Set<string>> {
-  const { data: favList, error: listError } = await supabase
-    .from("lists")
-    .select("id")
-    .eq("is_favorites", true)
-    .maybeSingle();
-
-  if (listError || !favList) return new Set();
-
-  const { data: memberRows, error: memberError } = await supabase
+  // One round trip via a nested select on the embedded parent, instead of
+  // fetching the favorites list id and then its members separately.
+  const { data: memberRows, error } = await supabase
     .from("list_titles")
-    .select("title_id")
-    .eq("list_id", favList.id);
+    .select("title_id, lists!inner(is_favorites)")
+    .eq("lists.is_favorites", true);
 
-  if (memberError) return new Set();
+  if (error) return new Set();
 
   return new Set(((memberRows ?? []) as { title_id: string }[]).map((r) => r.title_id));
 }

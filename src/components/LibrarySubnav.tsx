@@ -27,6 +27,10 @@ export default function LibrarySubnav() {
             <li key={segment.href} className="min-w-0 flex-1">
               <Link
                 href={segment.href}
+                // Full RSC payload prefetch (see BottomNav) — moving between
+                // library sections is the most frequent navigation in the
+                // app, so it should never wait on a server round trip.
+                prefetch={true}
                 // Five segments no longer fit this control's original
                 // 4-up padding/text size at a 390px phone width — tighter
                 // horizontal padding and a smaller uppercase size keep

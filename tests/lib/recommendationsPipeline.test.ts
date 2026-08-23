@@ -153,14 +153,20 @@ function buildFakeSupabase(opts: {
     user: { id: "user-1" },
     tableResults: {
       user_titles: { data: seeds.map(userTitleRow), error: null },
-      watched_episodes: { data: [], error: null },
-      lists: { data: null, error: null },
       rec_dismissals: { data: opts.dismissed ?? [], error: null },
       recommendations: [
         { data: null, error: null }, // upsert
         { data: opts.existingRecommendations ?? [], error: null }, // select existing (staleness check)
         { data: null, error: null }, // delete stale
       ],
+    },
+    // No watched-episode rows (irrelevant to these pipeline-level tests,
+    // which focus on exclusion/staleness, not seed weighting) and no
+    // favorites -- both loadWatchedAggregates (get_watched_aggregates RPC)
+    // and getFavoriteTitleIds (list_titles select) fall back to their empty
+    // defaults when unconfigured.
+    rpcResults: {
+      get_watched_aggregates: { data: [], error: null },
     },
   });
 }
