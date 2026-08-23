@@ -3,9 +3,7 @@
 Snapshot of where the build stands and where to continue. Pairs with
 `CLAUDE.md` (how to work here) and `context.md` (the why + full scope).
 
-_Updated 2026-08-02 (session 5: test suite repaired, CLAUDE.md corrected,
-nightly refresh rewritten and **deployed**, Explore rails, backups dropped).
-Earlier sessions summarized under "What's on `main`"._
+_Updated 2026-08-23 (session 7: Similar rail on both title screens, TMDB recommendation re-ranking). Session 6 and earlier are summarized below and under "What's on `main`"._
 
 ## Where we are
 
@@ -20,6 +18,16 @@ Two things changed character this session:
   scheduled — this is the first background automation in the project.
 - **The test suite is trustworthy again.** It was 8-red for two sessions,
   which meant a run couldn't tell you whether *your* change broke something.
+
+### Session-7 changes (on `feat/similar-titles`, not yet merged to `main`)
+
+- **A "Similar" rail now renders at the bottom of both `/title/[titleId]` and `/preview/[source]/[sourceId]`**, for TV, anime and movies. It reuses `SearchResultCard` and `ExploreRail`, so add-to-bucket and "already in your library" behavior are identical to Search. New: `getSimilarTv` / `getSimilarMovie` and an exported `rankingScore` in `src/lib/tmdb.ts`; `GET /api/titles/similar`; `src/components/SimilarRail.tsx`. `ExploreRail` gained an optional `headingClassName` prop. The `tmdb<T>()` wrapper gained an optional `revalidate` so callers can request a longer cache than the 1hr default; similar-titles uses 24h.
+- **Finding worth keeping for the recommendations work: TMDB's `/recommendations` page order is not quality-ranked.** Verified against the live API — for Brooklyn Nine-Nine (id 48891), page 1 leads with Barney Miller (1975, 62 votes) and The Honeymooners, while Friends sits at position 16 and The Office is on a later page. Taking page 1 and capping at 12 therefore discarded the good results. The fix pulls 3 pages and re-ranks by `rankingScore` = `log10(vote_count+1) * vote_average + log10(popularity+1) * 3`, with a vote-count floor stepping 150 → 50 → 0 so an obscure seed degrades to a smaller rail instead of an empty one.
+- `/similar` is low quality and drifts off-genre (B99's returns 2-to-4-vote noise; Bleach's returns Doctor Who, Buffy, Star Trek, TMNT), so it's now a last resort only, used when the ranked pool is still thin, and non-anime results are dropped when the seed is anime.
+- Verified live after the fix: B99 now returns Friends, The Office, Seinfeld, Arrested Development, Married… with Children, 2 Broke Girls, Superstore; Bleach returns Jujutsu Kaisen, Demon Slayer, Solo Leveling, JoJo's, Mob Psycho 100, Dandadan — 20 of 20 classified as anime, no drift.
+- Titles already in the library are shown but sorted to the end of the rail (untracked cap 12, then tracked cap 6), rather than hidden.
+- **Known gap, worth recording:** Modern Family and How I Met Your Mother do not appear in B99's TMDB recommendation graph at all, across 60 candidates. Reranking cannot surface them — that needs a genre/keyword `/discover` supplement, which is the planned next phase.
+- Test suite as of this session: **174 passing**.
 
 ### Session-5 changes (all merged to `main`)
 
@@ -224,7 +232,7 @@ now covers).
 ```bash
 npm run dev      # http://localhost:3000
 npm run build    # prod build (green)
-npm test         # vitest run — 88 passing
+npm test         # vitest run — 174 passing
 npm run lint     # eslint
 ```
 
