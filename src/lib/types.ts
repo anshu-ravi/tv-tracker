@@ -88,6 +88,36 @@ export interface SearchResult {
   overview?: string | null;
 }
 
+// A caller's own library entry for a title, keyed by titleKey(...) at the
+// call site — lets search/explore/similar results render as "already in
+// your library" (linking to the detail page) instead of an add control.
+export interface ExistingLibraryEntry {
+  status: WatchStatus;
+  titleId: string;
+}
+
+// One recommended title from a stored Explore rail (see GET
+// /api/recommendations).
+export interface RecommendationItem {
+  source: DataSource;
+  sourceId: string;
+  mediaType: MediaType;
+  title: string;
+  posterUrl: string | null;
+  overview: string | null;
+  year: number | null;
+  score: number;
+}
+
+// One Explore rail: either a "for_you_*" rail (seedTitle null) or a
+// "because:<seedTitleId>" rail (seedTitle set to the completed title that
+// produced it).
+export interface RecommendationRail {
+  rail: string;
+  seedTitle: { titleId: string; title: string; posterUrl: string | null } | null;
+  items: RecommendationItem[];
+}
+
 // Stable lookup/React-list key for a title. `sourceId` alone is NOT unique:
 // TMDB assigns ids per provider namespace, so a `/tv` id and a `/movie` id
 // can collide numerically despite being unrelated works. `tv` and `anime`

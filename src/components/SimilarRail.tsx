@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ExploreRail from "@/components/ExploreRail";
 import { SkeletonPoster } from "@/components/Skeleton";
-import type { DataSource, MediaType, SearchResult } from "@/lib/types";
-import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
+import type { DataSource, ExistingLibraryEntry, MediaType, SearchResult } from "@/lib/types";
 
 const SKELETON_COUNT = 4;
 

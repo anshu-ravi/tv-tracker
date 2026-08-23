@@ -26,7 +26,7 @@ const TABS = [
     matchPrefixes: ["/tv", "/anime", "/watchlist", "/lists"] as const,
     exact: false,
   },
-  { href: "/search", label: "Search", Icon: SearchIcon, matchPrefixes: ["/search"] as const, exact: false },
+  { href: "/explore", label: "Explore", Icon: SearchIcon, matchPrefixes: ["/explore", "/search"] as const, exact: false },
   { href: "/account", label: "Account", Icon: UserIcon, matchPrefixes: ["/account"] as const, exact: false },
 ] as const;
 

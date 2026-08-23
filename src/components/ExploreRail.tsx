@@ -1,6 +1,5 @@
 import SearchResultCard from "@/components/SearchResultCard";
-import { titleKey, type SearchResult } from "@/lib/types";
-import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
+import { titleKey, type ExistingLibraryEntry, type SearchResult } from "@/lib/types";
 
 // One horizontally-scrollable rail of trending results on the Search
 // screen's pre-query Explore state — model matches CatchUpCarousel's
@@ -14,6 +13,7 @@ export default function ExploreRail({
   results,
   existing,
   onAdded,
+  onDismiss,
   isFirstSection = false,
   headingClassName = "text-lg",
 }: {
@@ -21,13 +21,16 @@ export default function ExploreRail({
   results: SearchResult[];
   existing: Record<string, ExistingLibraryEntry>;
   onAdded: () => void;
-  // True only for the first rail rendered on the Search screen's Explore
-  // state (Trending TV) — its first couple of cards are what's actually
-  // above the fold; the Trending Anime rail below it never is.
+  // True only for the first rail rendered on the Explore screen's pre-query
+  // state (the leading rail) — its first couple of cards are what's actually
+  // above the fold; rails below it never are.
   isFirstSection?: boolean;
-  // Lets a caller outside Search (e.g. SimilarRail, which matches a title
+  // Lets a caller outside Explore (e.g. SimilarRail, which matches a title
   // page's larger section headings) size the heading differently.
   headingClassName?: string;
+  // Explore-only reject control (see ExploreClient) — omitted everywhere
+  // else, so SearchResultCard renders no dismiss affordance there.
+  onDismiss?: (result: SearchResult) => void;
 }) {
   if (results.length === 0) return null;
 
@@ -45,6 +48,7 @@ export default function ExploreRail({
                   existingStatus={existing[key]?.status}
                   existingTitleId={existing[key]?.titleId}
                   onAdded={onAdded}
+                  onDismiss={onDismiss ? () => onDismiss(result) : undefined}
                   priority={isFirstSection && index < 2}
                 />
               </div>

@@ -8,6 +8,7 @@ import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import RatingBadges from "@/components/RatingBadges";
 import SimilarRail from "@/components/SimilarRail";
 import TitleActionBar from "@/components/TitleActionBar";
+import UserRatingControl from "@/components/UserRatingControl";
 import type { DataSource, MediaType, TitleCredits, TitleRatings, WatchStatus } from "@/lib/types";
 
 // --- Row shapes for the untyped Supabase client -----------------------------
@@ -126,7 +127,7 @@ export default async function TitleDetailPage({
   ] = await Promise.all([
     supabase
       .from("user_titles")
-      .select("status")
+      .select("status, rating")
       .eq("title_id", titleId)
       .maybeSingle(),
     supabase
@@ -145,9 +146,11 @@ export default async function TitleDetailPage({
   if (episodesError) throw episodesError;
   if (watchedError) throw watchedError;
 
-  const status = (userTitleData as { status: WatchStatus } | null)?.status ?? null;
+  const userTitle = userTitleData as { status: WatchStatus; rating: number | null } | null;
+  const status = userTitle?.status ?? null;
   // ↑ null is only possible for a title that lost its user_titles row
   // mid-visit; TitleActionBar treats a missing status as "not yet tracked".
+  const rating = userTitle?.rating ?? null;
   const episodes = (episodesData ?? []) as EpisodeRow[];
   const watchedIds = new Set(
     ((watchedData ?? []) as { episode_id: string }[]).map((w) => w.episode_id),
@@ -297,6 +300,7 @@ export default async function TitleDetailPage({
             initialStatus={status ?? undefined}
           />
           <RatingBadges ratings={ratings} />
+          {status && <UserRatingControl titleId={title.id} initialRating={rating} />}
           {nextAirLabel && (
             <p className="text-xs text-ink-soft">
               Next: {title.next_episode_label ?? "Episode"} · {nextAirLabel}

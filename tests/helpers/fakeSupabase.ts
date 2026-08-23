@@ -4,6 +4,7 @@
 //   from(table).insert(...)
 //   from(table).update(...).eq(...).eq(...).select().maybeSingle()
 //   from(table).delete().eq(...).eq(...).in(...)
+//   from(table).select(...).range(...)
 //   rpc(fnName, args)
 //   auth.getUser() / auth.getClaims()
 //
@@ -61,6 +62,10 @@ export class FakeQueryBuilder implements PromiseLike<TableResult> {
 
   in(...args: unknown[]): this {
     return this.record("in", args);
+  }
+
+  range(...args: unknown[]): this {
+    return this.record("range", args);
   }
 
   single(): Promise<TableResult> {
