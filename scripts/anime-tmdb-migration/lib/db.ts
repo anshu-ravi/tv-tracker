@@ -64,9 +64,15 @@ export async function loadEpisodes(supabase: SupabaseClient, titleId: string): P
 }
 
 // A row already tagged source='tmdb' with the SAME tmdb id would violate the
-// UNIQUE (source, source_id) constraint if we retargeted this title onto it
-// — that means the show is already tracked separately (e.g. also added as
-// plain TV). Report loudly; never silently merge.
+// UNIQUE (source, source_id, source_namespace) constraint if we retargeted
+// this title onto it — that means the show is already tracked separately
+// (e.g. also added as plain TV). Report loudly; never silently merge.
+//
+// This migration always retargets onto media_type='anime', which shares the
+// "tv" source_namespace with media_type='tv' (see
+// supabase/migrations/20260823140000_titles_source_namespace.sql and
+// titleKey() in src/lib/types.ts) — so a movie with the same tmdb id is a
+// different namespace, not a real collision, and is excluded here.
 export async function findCollision(
   supabase: SupabaseClient,
   tmdbId: number,
@@ -77,6 +83,7 @@ export async function findCollision(
     .select("id, title, media_type")
     .eq("source", "tmdb")
     .eq("source_id", String(tmdbId))
+    .neq("media_type", "movie")
     .neq("id", excludeTitleId)
     .maybeSingle();
   if (error) throw new Error(`Collision check failed for tmdb id ${tmdbId}: ${error.message}`);

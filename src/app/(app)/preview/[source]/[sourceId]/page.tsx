@@ -7,6 +7,7 @@ import { getMovieRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import PreviewEpisodeList, { type PreviewSeasonGroup } from "@/components/PreviewEpisodeList";
 import RatingBadges from "@/components/RatingBadges";
+import SimilarRail from "@/components/SimilarRail";
 import TitleActionBar from "@/components/TitleActionBar";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 import type {
@@ -268,6 +269,10 @@ export default async function PreviewPage({
           <PreviewEpisodeList seasons={seasons} />
         </div>
       )}
+
+      <div className="mt-6 px-4">
+        <SimilarRail source={dataSource} sourceId={sourceId} mediaType={mediaType} />
+      </div>
     </div>
   );
 }

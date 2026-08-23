@@ -249,7 +249,7 @@ async function resolveTitleMapping(supabase: any, apiKey: string, t: AnimeTitleR
   if (collision) {
     return {
       ready: false,
-      reason: `TMDB id ${result.tmdbId} already exists as another titles row ("${collision.title}", ${collision.media_type}, id ${collision.id}) — would violate UNIQUE(source, source_id)`,
+      reason: `TMDB id ${result.tmdbId} already exists as another titles row ("${collision.title}", ${collision.media_type}, id ${collision.id}) — would violate UNIQUE(source, source_id, source_namespace)`,
     };
   }
 

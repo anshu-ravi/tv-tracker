@@ -379,6 +379,328 @@ describe("getMovieImdbId", () => {
   });
 });
 
+describe("getSimilarTv", () => {
+  function tvResult(
+    id: number,
+    overrides: Partial<{
+      poster_path: string | null;
+      genre_ids: number[];
+      origin_country: string[];
+      original_language: string;
+      vote_count: number;
+      vote_average: number;
+      popularity: number;
+    }> = {},
+  ) {
+    return {
+      id,
+      name: `Show ${id}`,
+      first_air_date: "2020-01-01",
+      poster_path: overrides.poster_path === undefined ? "/poster.jpg" : overrides.poster_path,
+      overview: null,
+      genre_ids: overrides.genre_ids ?? [],
+      origin_country: overrides.origin_country ?? ["US"],
+      original_language: overrides.original_language ?? "en",
+      vote_count: overrides.vote_count ?? 0,
+      vote_average: overrides.vote_average ?? 0,
+      popularity: overrides.popularity ?? 0,
+    };
+  }
+
+  // Only page 1 carries results by default; pages 2/3 and a /similar
+  // fallback all resolve empty so tests that don't care about pagination or
+  // the /similar top-up stay simple.
+  function stubRecommendationPages(page1Results: ReturnType<typeof tvResult>[]) {
+    return vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/recommendations") && url.includes("page=1")) {
+        return jsonResponse({ results: page1Results });
+      }
+      return jsonResponse({ results: [] });
+    });
+  }
+
+  it("maps a recommendations response to SearchResult shape", async () => {
+    const fetchMock = stubRecommendationPages(
+      Array.from({ length: 6 }, (_, i) => tvResult(i + 1)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results[0]).toEqual({
+      source: "tmdb",
+      sourceId: "1",
+      mediaType: "tv",
+      title: "Show 1",
+      year: 2020,
+      posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+      overview: null,
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/tv/42/recommendations");
+  });
+
+  it("fetches 3 recommendation pages and merges them; a failing page degrades gracefully instead of throwing", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("page=1")) {
+        return jsonResponse({ results: [tvResult(1), tvResult(2), tvResult(3)] });
+      }
+      if (url.includes("page=2")) return { ok: false, status: 500 } as Response;
+      if (url.includes("page=3")) {
+        return jsonResponse({ results: [tvResult(4), tvResult(5), tvResult(6)] });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(results.map((r) => r.sourceId)).toEqual(["1", "2", "3", "4", "5", "6"]);
+  });
+
+  it("ranks by score, not TMDB's page order — a low-vote item placed first ends up below a high-vote item placed last", async () => {
+    const low = tvResult(1, { vote_count: 5, vote_average: 3, popularity: 1 });
+    const filler = [2, 3, 4, 5].map((id) => tvResult(id, { vote_count: 30 }));
+    const high = tvResult(6, { vote_count: 5000, vote_average: 9, popularity: 500 });
+    const fetchMock = stubRecommendationPages([low, ...filler, high]);
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+    const ids = results.map((r) => r.sourceId);
+
+    expect(ids.indexOf("6")).toBeLessThan(ids.indexOf("1"));
+  });
+
+  it("does not call /similar when recommendations already return >= 6 usable results", async () => {
+    const fetchMock = stubRecommendationPages(
+      Array.from({ length: 6 }, (_, i) => tvResult(i + 1, { vote_count: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    await getSimilarTv("42");
+
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).not.toContain("/similar");
+    }
+  });
+
+  it("applies the vote-count floor: high-vote results survive, low-vote junk is dropped", async () => {
+    const good = Array.from({ length: 6 }, (_, i) => tvResult(i + 1, { vote_count: 200 }));
+    const junk = Array.from({ length: 3 }, (_, i) => tvResult(100 + i, { vote_count: 5 }));
+    const fetchMock = stubRecommendationPages([...good, ...junk]);
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results.map((r) => r.sourceId).sort()).toEqual(
+      good.map((r) => String(r.id)).sort(),
+    );
+  });
+
+  it("relaxes the vote floor to 0 when nothing clears 150 or 50 votes, instead of returning an empty rail", async () => {
+    const belowFloor = Array.from({ length: 8 }, (_, i) => tvResult(i + 1, { vote_count: 30 }));
+    const fetchMock = stubRecommendationPages(belowFloor);
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results).toHaveLength(8);
+  });
+
+  it("tops up from /similar and dedupes by id (recommendations win) when recommendations are thin", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/recommendations") && url.includes("page=1")) {
+        return jsonResponse({ results: [tvResult(1), tvResult(2)] });
+      }
+      if (url.includes("/recommendations")) return jsonResponse({ results: [] });
+      if (url.includes("/similar")) {
+        // id 1 overlaps with recommendations and must not be duplicated.
+        return jsonResponse({ results: [tvResult(1), tvResult(3)] });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results.map((r) => r.sourceId).sort()).toEqual(["1", "2", "3"]);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/similar"))).toBe(true);
+  });
+
+  it("drops a non-anime /similar result when the seed is anime", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/recommendations") && url.includes("page=1")) {
+        return jsonResponse({ results: [tvResult(1)] });
+      }
+      if (url.includes("/recommendations")) return jsonResponse({ results: [] });
+      if (url.includes("/similar")) {
+        return jsonResponse({
+          results: [
+            tvResult(2, { genre_ids: [16], origin_country: ["JP"], original_language: "ja" }),
+            tvResult(3), // not anime — should be dropped for an anime seed
+          ],
+        });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42", true);
+
+    expect(results.map((r) => r.sourceId).sort()).toEqual(["1", "2"]);
+  });
+
+  it("drops results with no poster_path", async () => {
+    const fetchMock = stubRecommendationPages([tvResult(1), tvResult(2, { poster_path: null })]);
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results.map((r) => r.sourceId)).toEqual(["1"]);
+  });
+
+  it("caps results at 20", async () => {
+    const fetchMock = stubRecommendationPages(
+      Array.from({ length: 25 }, (_, i) => tvResult(i + 1, { vote_count: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results).toHaveLength(20);
+  });
+
+  it("classifies each result independently instead of inheriting the seed's media type", async () => {
+    const fetchMock = stubRecommendationPages([
+      tvResult(1),
+      tvResult(2, { genre_ids: [16], origin_country: ["JP"], original_language: "ja" }),
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarTv } = await import("@/lib/tmdb");
+
+    const results = await getSimilarTv("42");
+
+    expect(results.find((r) => r.sourceId === "1")?.mediaType).toBe("tv");
+    expect(results.find((r) => r.sourceId === "2")?.mediaType).toBe("anime");
+  });
+});
+
+describe("getSimilarMovie", () => {
+  function movieResult(
+    id: number,
+    overrides: Partial<{
+      poster_path: string | null;
+      vote_count: number;
+      vote_average: number;
+      popularity: number;
+    }> = {},
+  ) {
+    return {
+      id,
+      title: `Movie ${id}`,
+      release_date: "2015-06-01",
+      poster_path: overrides.poster_path === undefined ? "/poster.jpg" : overrides.poster_path,
+      overview: null,
+      vote_count: overrides.vote_count ?? 0,
+      vote_average: overrides.vote_average ?? 0,
+      popularity: overrides.popularity ?? 0,
+    };
+  }
+
+  function stubRecommendationPages(page1Results: ReturnType<typeof movieResult>[]) {
+    return vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/recommendations") && url.includes("page=1")) {
+        return jsonResponse({ results: page1Results });
+      }
+      return jsonResponse({ results: [] });
+    });
+  }
+
+  it("maps a recommendations response to SearchResult shape (mediaType always movie)", async () => {
+    const fetchMock = stubRecommendationPages(
+      Array.from({ length: 6 }, (_, i) => movieResult(i + 1)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarMovie } = await import("@/lib/tmdb");
+
+    const results = await getSimilarMovie("100");
+
+    expect(results[0]).toEqual({
+      source: "tmdb",
+      sourceId: "1",
+      mediaType: "movie",
+      title: "Movie 1",
+      year: 2015,
+      posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+      overview: null,
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/movie/100/recommendations");
+  });
+
+  it("does not call /similar when recommendations already return >= 6 usable results", async () => {
+    const fetchMock = stubRecommendationPages(
+      Array.from({ length: 6 }, (_, i) => movieResult(i + 1, { vote_count: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarMovie } = await import("@/lib/tmdb");
+
+    await getSimilarMovie("100");
+
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).not.toContain("/similar");
+    }
+  });
+
+  it("tops up from /similar and dedupes by id when recommendations are thin", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/recommendations") && url.includes("page=1")) {
+        return jsonResponse({ results: [movieResult(1)] });
+      }
+      if (url.includes("/recommendations")) return jsonResponse({ results: [] });
+      if (url.includes("/similar")) {
+        return jsonResponse({ results: [movieResult(1), movieResult(2)] });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarMovie } = await import("@/lib/tmdb");
+
+    const results = await getSimilarMovie("100");
+
+    expect(results.map((r) => r.sourceId).sort()).toEqual(["1", "2"]);
+  });
+
+  it("drops posterless results and caps at 20", async () => {
+    const fetchMock = stubRecommendationPages([
+      ...Array.from({ length: 25 }, (_, i) => movieResult(i + 1, { vote_count: 200 })),
+      movieResult(999, { poster_path: null, vote_count: 200 }),
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    const { getSimilarMovie } = await import("@/lib/tmdb");
+
+    const results = await getSimilarMovie("100");
+
+    expect(results).toHaveLength(20);
+    expect(results.some((r) => r.sourceId === "999")).toBe(false);
+  });
+});
+
 describe("getTrending", () => {
   const trendingResponse = {
     results: [
