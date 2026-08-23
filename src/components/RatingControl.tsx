@@ -116,7 +116,7 @@ export default function RatingControl({
         )}
       </div>
 
-      <div className="relative pb-4">
+      <div className="relative pb-3">
         <div
           ref={trackRef}
           role="slider"
@@ -133,28 +133,30 @@ export default function RatingControl({
             setDragValue(null);
           }}
           onKeyDown={handleKeyDown}
-          className={`relative h-14 w-full touch-none border-[3px] border-ink bg-panel ${
+          className={`relative flex h-11 w-full touch-none items-center ${
             disabled ? "opacity-50" : "cursor-pointer"
           }`}
         >
-          <div className="pointer-events-none absolute inset-y-0 left-0 bg-acid" style={{ width: `${percent}%` }} />
-          {MINOR_TICKS.map((t) => (
-            <div
-              key={t}
-              className="pointer-events-none absolute top-0 bottom-0 w-px bg-ink/20"
-              style={{ left: `${percentFor(t)}%` }}
-            />
-          ))}
-          {MAJOR_TICKS.map((t) => (
-            <div
-              key={t}
-              className="pointer-events-none absolute top-0 bottom-0 w-[2px] bg-ink/40"
-              style={{ left: `${percentFor(t)}%` }}
-            />
-          ))}
+          <div className="pointer-events-none relative h-5 w-full overflow-hidden border-[3px] border-ink bg-panel">
+            <div className="pointer-events-none absolute inset-y-0 left-0 bg-acid" style={{ width: `${percent}%` }} />
+            {MINOR_TICKS.map((t) => (
+              <div
+                key={t}
+                className="pointer-events-none absolute top-0 bottom-0 w-px bg-ink/20"
+                style={{ left: `${percentFor(t)}%` }}
+              />
+            ))}
+            {MAJOR_TICKS.map((t) => (
+              <div
+                key={t}
+                className="pointer-events-none absolute top-0 bottom-0 w-[2px] bg-ink/40"
+                style={{ left: `${percentFor(t)}%` }}
+              />
+            ))}
+          </div>
           {displayValue != null && (
             <div
-              className="hard-shadow-sm pointer-events-none absolute top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2 border-[3px] border-ink bg-paper"
+              className="hard-shadow-sm pointer-events-none absolute top-1/2 h-8 w-6 -translate-x-1/2 -translate-y-1/2 border-[3px] border-ink bg-paper"
               style={{ left: `${percent}%` }}
             />
           )}
@@ -162,7 +164,7 @@ export default function RatingControl({
         {MAJOR_TICKS.map((t) => (
           <span
             key={t}
-            className="pointer-events-none absolute top-full mt-1 -translate-x-1/2 text-[10px] font-bold text-ink-soft"
+            className="pointer-events-none absolute top-10 -translate-x-1/2 text-[10px] font-bold text-ink-soft"
             style={{ left: `${percentFor(t)}%` }}
           >
             {t}
