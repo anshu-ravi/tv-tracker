@@ -25,12 +25,17 @@ export default function SearchResultCard({
   existingStatus,
   existingTitleId,
   onAdded,
+  onDismiss,
   priority = false,
 }: {
   result: SearchResult;
   existingStatus?: WatchStatus;
   existingTitleId?: string;
   onAdded: () => void;
+  // Explore-only "not interested" control (see ExploreClient) — absent
+  // everywhere else (search results, the Similar rail), so this renders
+  // nothing extra there.
+  onDismiss?: () => void;
   priority?: boolean;
 }) {
   // Movies have no "watching" bucket (see CLAUDE.md's movies product
@@ -105,7 +110,21 @@ export default function SearchResultCard({
     : `/preview/${result.source}/${result.sourceId}?mediaType=${result.mediaType}`;
 
   return (
-    <div className="card-bold overflow-hidden p-0">
+    <div className="card-bold relative overflow-hidden p-0">
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDismiss();
+          }}
+          aria-label={`Not interested in ${result.title}`}
+          className="hard-shadow-sm absolute right-1 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-full border-[3px] border-ink bg-paper text-sm font-extrabold leading-none text-ink transition-transform active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+        >
+          ✕
+        </button>
+      )}
       <Link href={posterHref}>
         <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
           {poster}

@@ -4,11 +4,11 @@ import { getSimilarMovie, getSimilarTv } from "@/lib/tmdb";
 import {
   titleKey,
   type DataSource,
+  type ExistingLibraryEntry,
   type MediaType,
   type SearchResult,
   type WatchStatus,
 } from "@/lib/types";
-import type { ExistingLibraryEntry } from "@/app/(app)/search/page";
 
 interface TitleRow {
   id: string;
@@ -60,8 +60,8 @@ function partitionByTracked(
 
 // GET /api/titles/similar?source=tmdb&sourceId=...&mediaType=... — backs the
 // "Similar" rail (SimilarRail) on both title screens. Existing-library
-// lookup mirrors search/page.tsx so results can be flagged already-tracked
-// the same way search results are.
+// lookup mirrors explore/page.tsx so results can be flagged already-tracked
+// the same way search/explore results are.
 export async function GET(request: NextRequest) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
