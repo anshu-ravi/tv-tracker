@@ -20,9 +20,10 @@ interface TrackedTitleRow {
 }
 
 // Bulk rater (/account/rate): a stack-of-cards flow over every unrated
-// tracked title, most-engaged first (see lib/rateQueue.ts) -- rating ~180
-// titles one detail page at a time was never going to happen, and explicit
-// ratings are the strongest signal the recommendation engine can use.
+// started title (watchlist excluded -- see lib/rateQueue.ts), most-engaged
+// first -- rating ~180 titles one detail page at a time was never going to
+// happen, and explicit ratings are the strongest signal the recommendation
+// engine can use.
 export default async function RatePage() {
   const supabase = await createClient();
 
@@ -31,7 +32,11 @@ export default async function RatePage() {
       .from("user_titles")
       .select(
         "title_id, status, rating, titles(source, source_id, media_type, title, poster_url, first_air_date)",
-      ),
+      )
+      // Trim the fetch to started titles; buildRateQueue is still the
+      // tested source of truth for this filter, this just avoids shipping
+      // watchlist rows to the client only to drop them.
+      .neq("status", "watchlist"),
     getFavoriteTitleIds(supabase),
   ]);
 
