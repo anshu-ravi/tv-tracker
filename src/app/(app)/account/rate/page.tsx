@@ -61,8 +61,8 @@ export default async function RatePage() {
 
       <h1 className="display mb-1 mt-4 text-3xl">Rate Your Titles</h1>
       <p className="mb-4 text-xs text-ink-soft">
-        Tap and drag to set a rating, half-steps included. Skip whatever you don&rsquo;t want to
-        grade.
+        Drag to set a rating in tenths, or nudge with −/+ for precision, then tap Next to save it.
+        Skip whatever you don&rsquo;t want to grade.
       </p>
 
       <RateStack queue={queue} />
