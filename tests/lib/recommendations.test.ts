@@ -3,6 +3,8 @@ import {
   applyVoteFloor,
   excludeKnownTitles,
   positionDecay,
+  RECENCY_FLOOR,
+  RECENCY_UNKNOWN,
   scoreCandidates,
   seedWeight,
   selectSeeds,
@@ -94,11 +96,22 @@ describe("seedWeight", () => {
     const veryOld = new Date(NOW);
     veryOld.setFullYear(veryOld.getFullYear() - 20);
     const ancient = seedWeight(seed({ lastWatchedAt: veryOld.toISOString() }), NOW);
-    const nullDate = seedWeight(seed({ lastWatchedAt: null }), NOW);
 
     expect(older).toBeLessThan(recent);
-    expect(ancient).toBeGreaterThanOrEqual(nullDate * 0.999);
-    expect(ancient).toBeCloseTo(nullDate, 5);
+    expect(ancient).toBeCloseTo(RECENCY_FLOOR, 5);
+  });
+
+  it("treats an unknown lastWatchedAt as a retrospective complete, not an ancient watch", () => {
+    // A null date means "watched, but date unknown" -- roughly the same
+    // vintage as the bulk-imported titles, so it must land above the floor
+    // and, crucially, above a title known to be genuinely years old.
+    const nullDate = seedWeight(seed({ lastWatchedAt: null }), NOW);
+    const veryOld = new Date(NOW);
+    veryOld.setFullYear(veryOld.getFullYear() - 20);
+    const ancient = seedWeight(seed({ lastWatchedAt: veryOld.toISOString() }), NOW);
+
+    expect(nullDate).toBeCloseTo(RECENCY_UNKNOWN, 5);
+    expect(nullDate).toBeGreaterThan(ancient);
   });
 
   it("keeps a favorite, high-completion DNF seed negative and more negative than a plain DNF", () => {

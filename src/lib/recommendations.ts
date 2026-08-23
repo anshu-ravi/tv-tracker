@@ -40,7 +40,10 @@ export const COMPLETION_SCALE = 0.75;
 // Recency decay: exponential half-life on days since lastWatchedAt, floored
 // so a long-finished favorite never decays to nothing.
 export const RECENCY_HALF_LIFE_DAYS = 548; // ~18 months
-export const RECENCY_FLOOR = 0.15;
+export const RECENCY_FLOOR = 0.4;
+
+// A null date means a retrospective complete from the historical backlog, not an ancient watch, so it must not take the floor penalty.
+export const RECENCY_UNKNOWN = 0.8;
 
 export const FAVORITE_BOOST = 1.5;
 
@@ -53,9 +56,9 @@ function completionFactor(watchedEpisodes: number, totalEpisodes: number | null)
 }
 
 function recencyFactor(lastWatchedAt: string | null, now: Date): number {
-  if (!lastWatchedAt) return RECENCY_FLOOR;
+  if (!lastWatchedAt) return RECENCY_UNKNOWN;
   const last = new Date(lastWatchedAt).getTime();
-  if (Number.isNaN(last)) return RECENCY_FLOOR;
+  if (Number.isNaN(last)) return RECENCY_UNKNOWN;
   const ageDays = Math.max(0, (now.getTime() - last) / (1000 * 60 * 60 * 24));
   const decayed = Math.pow(0.5, ageDays / RECENCY_HALF_LIFE_DAYS);
   return Math.max(RECENCY_FLOOR, decayed);
