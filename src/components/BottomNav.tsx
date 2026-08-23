@@ -48,6 +48,13 @@ export default function BottomNav() {
             <li key={tab.href} className="flex-1">
               <Link
                 href={tab.href}
+                // Force the full RSC payload to prefetch, not just the
+                // layout-to-loading-boundary slice Next's default "auto"
+                // gives dynamic routes — there are only 4 tabs, so
+                // prefetching all of them on every screen is cheap even on
+                // mobile data, and it's what makes tab switches feel
+                // instant instead of waiting on a server round trip.
+                prefetch={true}
                 className={`flex flex-col items-center gap-1 border-r-[3px] border-ink px-1 py-2.5 transition-colors last:border-r-0 ${
                   active ? "bg-acid text-ink" : "bg-paper text-ink-soft"
                 }`}
