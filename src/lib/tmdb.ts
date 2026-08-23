@@ -636,6 +636,107 @@ export async function getSimilarMovie(id: string): Promise<SearchResult[]> {
   return candidates.map(toSimilarMovieResult);
 }
 
+// ---- personalized recommendations (lib/api/recommendations.ts) ---------------
+//
+// Raw, unranked recommendation candidates for one seed title. Unlike
+// gatherSimilarCandidates above (which ranks and caps for a single rail),
+// this hands candidates back untouched — the personalized pipeline pools
+// results across many seeds before lib/recommendations.ts scoreCandidates
+// does the ranking, so ranking here would be thrown away. Only 2 pages (vs
+// 3 for similar-titles): a thin single-seed pool matters less here since
+// candidates pool across up to DEFAULT_SEED_COUNT seeds.
+const RECOMMENDATION_CANDIDATE_PAGES = 2;
+const RECOMMENDATION_CANDIDATE_REVALIDATE_SECONDS = 60 * 60 * 24;
+
+export interface RecommendationCandidate {
+  source: "tmdb";
+  sourceId: string;
+  mediaType: MediaType;
+  title: string;
+  posterUrl: string | null;
+  year: number | null;
+  overview: string | null;
+  voteCount: number;
+  voteAverage: number;
+  popularity: number;
+  rank: number; // zero-based position in this seed's merged result list
+}
+
+function toRecommendationTvCandidate(
+  r: TmdbSearchTvResult,
+  rank: number,
+): RecommendationCandidate {
+  return {
+    source: "tmdb",
+    sourceId: String(r.id),
+    mediaType: classifyTmdbSearchResult(r),
+    title: r.name,
+    posterUrl: img(r.poster_path),
+    year: r.first_air_date ? Number(r.first_air_date.slice(0, 4)) : null,
+    overview: r.overview,
+    voteCount: r.vote_count ?? 0,
+    voteAverage: r.vote_average ?? 0,
+    popularity: r.popularity ?? 0,
+    rank,
+  };
+}
+
+function toRecommendationMovieCandidate(
+  r: TmdbSearchMovieResult,
+  rank: number,
+): RecommendationCandidate {
+  return {
+    source: "tmdb",
+    sourceId: String(r.id),
+    mediaType: "movie",
+    title: r.title,
+    posterUrl: img(r.poster_path),
+    year: r.release_date ? Number(r.release_date.slice(0, 4)) : null,
+    overview: r.overview,
+    voteCount: r.vote_count ?? 0,
+    voteAverage: r.vote_average ?? 0,
+    popularity: r.popularity ?? 0,
+    rank,
+  };
+}
+
+export async function getRecommendationCandidates(
+  sourceId: string,
+  mediaType: MediaType,
+): Promise<RecommendationCandidate[]> {
+  const path =
+    mediaType === "movie"
+      ? `/movie/${sourceId}/recommendations`
+      : `/tv/${sourceId}/recommendations`;
+
+  // Pages fetched in parallel and merged in request order (not resolution
+  // order — Promise.allSettled preserves input order), so rank stays a
+  // stable zero-based position across the page boundary. A failed page is
+  // dropped rather than failing the whole call.
+  const settled = await Promise.allSettled(
+    Array.from({ length: RECOMMENDATION_CANDIDATE_PAGES }, (_, i) =>
+      tmdb<{ results: (TmdbSearchTvResult | TmdbSearchMovieResult)[] }>(
+        path,
+        { page: i + 1 },
+        { revalidate: RECOMMENDATION_CANDIDATE_REVALIDATE_SECONDS },
+      ),
+    ),
+  );
+  const merged = settled.flatMap((r) => (r.status === "fulfilled" ? r.value.results : []));
+
+  // Rank is assigned over the full merged list before posterless results are
+  // dropped, so it reflects TMDB's own ordering rather than a
+  // filtered-list-relative position.
+  return merged
+    .map((r, rank) => ({ r, rank }))
+    .filter(({ r }) => r.poster_path)
+    .map(({ r, rank }) =>
+      mediaType === "movie"
+        ? toRecommendationMovieCandidate(r as TmdbSearchMovieResult, rank)
+        : toRecommendationTvCandidate(r as TmdbSearchTvResult, rank),
+    );
+}
+
 // ---- anime enrichment (lib/tmdbAnimeMatch.ts) --------------------------------
 // TMDB has no concept of "anime" — these hit the same /search/tv and /tv/{id}
 // endpoints above, but return raw/lightweight shapes tmdbAnimeMatch.ts needs

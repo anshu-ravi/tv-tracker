@@ -701,6 +701,160 @@ describe("getSimilarMovie", () => {
   });
 });
 
+describe("getRecommendationCandidates", () => {
+  function tvResult(
+    id: number,
+    overrides: Partial<{
+      poster_path: string | null;
+      genre_ids: number[];
+      origin_country: string[];
+      original_language: string;
+    }> = {},
+  ) {
+    return {
+      id,
+      name: `Show ${id}`,
+      first_air_date: "2020-01-01",
+      poster_path: overrides.poster_path === undefined ? "/poster.jpg" : overrides.poster_path,
+      overview: null,
+      genre_ids: overrides.genre_ids ?? [],
+      origin_country: overrides.origin_country ?? ["US"],
+      original_language: overrides.original_language ?? "en",
+      vote_count: 0,
+      vote_average: 0,
+      popularity: 0,
+    };
+  }
+
+  function movieResult(id: number, overrides: Partial<{ poster_path: string | null }> = {}) {
+    return {
+      id,
+      title: `Movie ${id}`,
+      release_date: "2015-06-01",
+      poster_path: overrides.poster_path === undefined ? "/poster.jpg" : overrides.poster_path,
+      overview: null,
+      vote_count: 0,
+      vote_average: 0,
+      popularity: 0,
+    };
+  }
+
+  it("merges 2 pages with a stable zero-based rank across the page boundary", async () => {
+    const page1 = Array.from({ length: 20 }, (_, i) => tvResult(i + 1));
+    const page2 = Array.from({ length: 15 }, (_, i) => tvResult(i + 21));
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("page=1")) return jsonResponse({ results: page1 });
+      if (url.includes("page=2")) return jsonResponse({ results: page2 });
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getRecommendationCandidates } = await import("@/lib/tmdb");
+
+    const results = await getRecommendationCandidates("42", "tv");
+
+    // The 31st merged item (index 30, the 11th result on page 2) must land
+    // at rank 30, not rank 10 of page 2 — positionDecay depends on the rank
+    // reflecting position across the whole merged list.
+    expect(results).toHaveLength(35);
+    expect(results[30].sourceId).toBe("31");
+    expect(results[30].rank).toBe(30);
+    expect(results[0].rank).toBe(0);
+  });
+
+  it("degrades instead of throwing when page 2 fails", async () => {
+    const page1 = [tvResult(1), tvResult(2)];
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("page=1")) return jsonResponse({ results: page1 });
+      if (url.includes("page=2")) return { ok: false, status: 500 } as Response;
+      throw new Error(`unexpected url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getRecommendationCandidates } = await import("@/lib/tmdb");
+
+    const results = await getRecommendationCandidates("42", "tv");
+
+    expect(results.map((r) => r.sourceId)).toEqual(["1", "2"]);
+  });
+
+  it("drops posterless results", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("page=1")) {
+        return jsonResponse({ results: [tvResult(1, { poster_path: null }), tvResult(2)] });
+      }
+      return jsonResponse({ results: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getRecommendationCandidates } = await import("@/lib/tmdb");
+
+    const results = await getRecommendationCandidates("42", "tv");
+
+    expect(results.map((r) => r.sourceId)).toEqual(["2"]);
+  });
+
+  it("classifies tv results independently via classifyTmdbSearchResult", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("page=1")) {
+        return jsonResponse({
+          results: [tvResult(1, { genre_ids: [16], origin_country: ["JP"] }), tvResult(2)],
+        });
+      }
+      return jsonResponse({ results: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getRecommendationCandidates } = await import("@/lib/tmdb");
+
+    const results = await getRecommendationCandidates("42", "tv");
+
+    expect(results.find((r) => r.sourceId === "1")?.mediaType).toBe("anime");
+    expect(results.find((r) => r.sourceId === "2")?.mediaType).toBe("tv");
+  });
+
+  it("dispatches to /movie/{id}/recommendations and always tags mediaType movie", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      expect(url).toContain("/movie/7/recommendations");
+      if (url.includes("page=1")) return jsonResponse({ results: [movieResult(1)] });
+      return jsonResponse({ results: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getRecommendationCandidates } = await import("@/lib/tmdb");
+
+    const results = await getRecommendationCandidates("7", "movie");
+
+    expect(results).toEqual([
+      {
+        source: "tmdb",
+        sourceId: "1",
+        mediaType: "movie",
+        title: "Movie 1",
+        posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+        year: 2015,
+        overview: null,
+        voteCount: 0,
+        voteAverage: 0,
+        popularity: 0,
+        rank: 0,
+      },
+    ]);
+  });
+
+  it("dispatches anime seeds through the /tv path", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      expect(url).toContain("/tv/9/recommendations");
+      return jsonResponse({ results: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { getRecommendationCandidates } = await import("@/lib/tmdb");
+
+    await getRecommendationCandidates("9", "anime");
+  });
+});
+
 describe("getTrending", () => {
   const trendingResponse = {
     results: [
