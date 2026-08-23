@@ -26,10 +26,89 @@ export const STATUS_BASE_WEIGHT: Record<WatchStatus, number> = {
   dnf: -0.6,
 };
 
-// Rating -> base weight: (rating - 3) / 2, so 5.0 -> 1.0, 3.0 -> 0 (neutral),
-// 1.0 -> -1.0. Overrides the status base entirely when present.
+// Rating -> base weight. Overrides the status base entirely when present.
 export const RATING_NEUTRAL = 3.0;
 export const RATING_DIVISOR = 2.0;
+
+// A rating only means something relative to how this owner actually rates --
+// e.g. a 3.5 can be a mild positive for a harsh rater or a near-miss for a
+// generous one. RatingScale ranks a rating against the owner's own
+// distribution (tie-aware percentile) instead of the abstract 0.5-5.0 scale,
+// while still anchoring 3.0 as neutral so the sign of the weight keeps its
+// absolute meaning.
+export const MIN_RATINGS_FOR_SCALE = 20;
+
+export interface RatingScale {
+  sorted: number[]; // ascending, includes duplicates; empty/degenerate scales fall back to the absolute formula
+  p0: number; // tie-aware percentile rank of RATING_NEUTRAL within `sorted`
+}
+
+// Number of entries strictly less than / at most `x` in an ascending array,
+// via binary search -- works for any x, not just values present in `sorted`.
+function countBelow(sorted: number[], x: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function countAtMost(sorted: number[], x: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] <= x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+// Midpoint-rank percentile so every title tied at the same rating gets an
+// identical percentile (and therefore an identical weight).
+function percentileRank(sorted: number[], x: number): number {
+  if (sorted.length === 0) return 0.5;
+  const below = countBelow(sorted, x);
+  const equal = countAtMost(sorted, x) - below;
+  return (below + 0.5 * equal) / sorted.length;
+}
+
+// Fewer than MIN_RATINGS_FOR_SCALE points makes percentile rank noisy, so the
+// scale is left null and callers fall back to the absolute formula.
+export function buildRatingScale(ratings: number[]): RatingScale | null {
+  if (ratings.length < MIN_RATINGS_FOR_SCALE) return null;
+  const sorted = [...ratings].sort((a, b) => a - b);
+  return { sorted, p0: percentileRank(sorted, RATING_NEUTRAL) };
+}
+
+// Anchored percentile map: p0 (the neutral point's own percentile) splits the
+// [0, 1] percentile range into a below-neutral half and an above-neutral
+// half, each independently rescaled to fill [-1, 0] / [0, 1]. That keeps "3.0
+// is neutral" absolute while letting each side stretch to the owner's actual
+// range, instead of a plain percentile map that would put the neutral point
+// at the owner's median and turn roughly half of their positively-rated
+// shows negative.
+export function ratingToBaseWeight(rating: number, scale: RatingScale | null): number {
+  if (!scale) return (rating - RATING_NEUTRAL) / RATING_DIVISOR;
+
+  const { sorted, p0 } = scale;
+  const p = percentileRank(sorted, rating);
+
+  if (rating >= RATING_NEUTRAL) {
+    // p0 === 1 means every rated title in the scale sits below neutral, so
+    // this rating -- being >= neutral -- is off the top of the distribution.
+    if (p0 >= 1) return 1;
+    return (p - p0) / (1 - p0);
+  }
+
+  // p0 === 0 means every rated title sits at/above neutral (a generous
+  // rater), so a below-neutral rating is off the bottom of the distribution.
+  if (p0 <= 0) return -1;
+  return (p - p0) / p0;
+}
 
 // Completion factor floor/scale: a barely-started show still carries some
 // signal (0.25), scaling up to 1.0 at full completion.
@@ -75,11 +154,17 @@ function recencyFactor(lastWatchedAt: string | null, now: Date): number {
 // overrides the status base entirely (ratings are the point of collecting
 // them — they must outrank the heuristics, not average with them); the
 // completion/recency/favorite factors then scale the magnitude while
-// preserving sign, so a strongly-negative DNF seed stays negative.
-export function seedWeight(seed: SeedInput, now: Date = new Date()): number {
+// preserving sign, so a strongly-negative DNF seed stays negative. `scale`
+// is optional so existing call sites without a rating distribution keep
+// using the absolute (rating - 3) / 2 formula.
+export function seedWeight(
+  seed: SeedInput,
+  now: Date = new Date(),
+  scale?: RatingScale | null,
+): number {
   const base =
     seed.rating != null
-      ? (seed.rating - RATING_NEUTRAL) / RATING_DIVISOR
+      ? ratingToBaseWeight(seed.rating, scale ?? null)
       : STATUS_BASE_WEIGHT[seed.status];
 
   const magnitude =
@@ -96,10 +181,11 @@ export function seedWeight(seed: SeedInput, now: Date = new Date()): number {
 // tracked title. Per-media-type (not one global top-N) because TV seeds
 // otherwise dominate by sheer weight and no movie or anime ever gets picked
 // -- a media type with fewer tracked titles than its quota just contributes
-// fewer seeds, never backfilled from another type. Strongly-negative DNF
-// seeds are eligible (they're informative) -- callers combining this with
-// candidate scoring should still pool across multiple seeds so no single
-// negative seed dominates the result on its own.
+// fewer seeds, never backfilled from another type. Strongly-negative DNF and
+// low-rated seeds are eligible (they're informative, and the percentile
+// rating scale below can push them close to -1) -- callers combining this
+// with candidate scoring should still pool across multiple seeds so no
+// single negative seed dominates the result on its own.
 export const SEED_COUNT_TV = 14;
 export const SEED_COUNT_ANIME = 10;
 export const SEED_COUNT_MOVIE = 8;
@@ -120,7 +206,12 @@ export function selectSeeds(
   now: Date = new Date(),
   counts: Record<MediaType, number> = DEFAULT_SEED_COUNTS,
 ): WeightedSeed[] {
-  const weighted = seeds.map((seed) => ({ seed, weight: seedWeight(seed, now) }));
+  // Built from the full seed population handed in (not just the titles that
+  // end up selected), so the scale always matches what it's scoring.
+  const scale = buildRatingScale(
+    seeds.map((s) => s.rating).filter((r): r is number => r != null),
+  );
+  const weighted = seeds.map((seed) => ({ seed, weight: seedWeight(seed, now, scale) }));
 
   const byMediaType = new Map<MediaType, WeightedSeed[]>();
   for (const ws of weighted) {
