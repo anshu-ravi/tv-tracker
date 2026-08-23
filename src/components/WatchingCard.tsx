@@ -150,11 +150,13 @@ export default function WatchingCard({
   priority?: boolean;
 }) {
   const router = useRouter();
-  // "justMarked" is a purely optimistic flag: true from the moment the POST
-  // succeeds until the server-refreshed `data` prop arrives. The Home page
-  // keys this component by `${titleId}:${watchedCount}:${nextUnwatchedEpisodeId}`,
-  // so once that refresh lands React remounts the card fresh (new key) —
-  // no effect needed to reset local state back to the real prop values.
+  // "justMarked" is a purely optimistic flag: true from the moment of the
+  // tap (not the POST resolving) until either the server-refreshed `data`
+  // prop arrives or the background POST turns out to have failed. The Home
+  // page keys this component by
+  // `${titleId}:${watchedCount}:${nextUnwatchedEpisodeId}`, so once a
+  // successful refresh lands React remounts the card fresh (new key) — no
+  // effect needed to reset local state back to the real prop values.
   const [justMarked, setJustMarked] = useState(false);
   const [pending, setPending] = useState(false);
   const [popCount, setPopCount] = useState(0);
@@ -163,6 +165,11 @@ export default function WatchingCard({
   const [expanded, setExpanded] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The in-flight mark-watched POST, if any. handleMark fires this in the
+  // background so the tap animation isn't gated on the network — handleUndo
+  // keeps a way to wait for it so a fast Undo can't race the DELETE ahead of
+  // the POST and leave the episode marked watched.
+  const postPromiseRef = useRef<Promise<Response> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -191,33 +198,49 @@ export default function WatchingCard({
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }
 
-  async function handleMark() {
+  function handleMark() {
     if (!data.nextUnwatchedEpisodeId || pending || justMarked) return;
+    const episodeId = data.nextUnwatchedEpisodeId;
+
+    // All visual feedback fires synchronously on tap — the POST below runs
+    // in the background so the punch/stamp/toast never wait on the network.
     setPending(true);
-    try {
-      const res = await fetch(
-        `/api/episodes/${data.nextUnwatchedEpisodeId}/watch`,
-        { method: "POST" },
-      );
-      if (!res.ok) throw new Error("Failed to mark episode watched");
+    setJustMarked(true);
+    setPopCount((n) => n + 1);
+    setToast({ message: "Marked watched", withUndo: true });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(dismissToast, 2500);
 
-      setJustMarked(true);
-      setPopCount((n) => n + 1);
-      setToast({ message: "Marked watched", withUndo: true });
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(dismissToast, 2500);
+    // Give the user a 2.5s Undo window before pulling fresh server state
+    // (which will hand back the next unwatched episode, if any).
+    refreshTimer.current = setTimeout(() => {
+      setToast(null);
+      router.refresh();
+    }, 2500);
 
-      // Give the user a 2.5s Undo window before pulling fresh server state
-      // (which will hand back the next unwatched episode, if any).
-      refreshTimer.current = setTimeout(() => {
-        setToast(null);
-        router.refresh();
-      }, 2500);
-    } catch {
-      // Leave the button enabled so the user can just try again.
-    } finally {
-      setPending(false);
-    }
+    const postPromise = fetch(`/api/episodes/${episodeId}/watch`, {
+      method: "POST",
+    });
+    postPromiseRef.current = postPromise;
+
+    postPromise
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to mark episode watched");
+      })
+      .catch(() => {
+        // The mark didn't stick — roll back the optimistic state and let
+        // the user know, rather than silently reverting. The button stays
+        // enabled (justMarked back to false) so they can just try again.
+        if (refreshTimer.current) clearTimeout(refreshTimer.current);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        setJustMarked(false);
+        setToast({ message: "Couldn't mark watched — try again", withUndo: false });
+        toastTimer.current = setTimeout(dismissToast, 2500);
+      })
+      .finally(() => {
+        setPending(false);
+        postPromiseRef.current = null;
+      });
   }
 
   function handleCaughtUpTap() {
@@ -240,6 +263,17 @@ export default function WatchingCard({
     const episodeId = data.nextUnwatchedEpisodeId;
     dismissToast();
     if (!episodeId) return;
+
+    // If the mark POST is still in flight, wait for it to land before
+    // issuing the DELETE — otherwise the DELETE could resolve first and the
+    // POST's upsert would re-mark the episode watched right after Undo.
+    if (postPromiseRef.current) {
+      await postPromiseRef.current.catch(() => {
+        // POST failed on its own — nothing was marked, nothing to undo
+        // server-side, but local state below still needs resetting.
+      });
+    }
+
     try {
       await fetch(`/api/episodes/${episodeId}/watch`, { method: "DELETE" });
     } finally {
