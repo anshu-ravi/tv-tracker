@@ -111,7 +111,7 @@ export default function SearchClient({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search TV shows or anime…"
+            placeholder="Search TV shows, anime, or movies…"
             className="w-full bg-transparent px-3 py-2 text-sm outline-none placeholder:text-ink-soft"
           />
           {loading && !queryTooShort && (
