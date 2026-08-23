@@ -64,41 +64,27 @@ interface WatchedAggregates {
   lastWatchedByTitle: Map<string, string>;
 }
 
-interface WatchedEpisodeRow {
-  title_id: string;
-  watched_at: string | null;
+interface WatchedAggregateRow {
+  titleId: string;
+  count: number;
+  lastWatchedAt: string | null;
 }
 
-// Paginates past Supabase's per-request row cap (the owner has ~6,630
-// watched episodes) and aggregates per-title count + most recent watched_at
-// in TypeScript, mirroring fetchAllWatchedEpisodes in lib/stats.ts.
+// Single round trip via public.get_watched_aggregates() (see
+// supabase/migrations) -- replaces the old page loop over watched_episodes
+// (the owner has ~6,630 watched episodes, 7 sequential 1000-row pages) with
+// one RPC call. RLS on watched_episodes scopes it to the caller.
 async function loadWatchedAggregates(supabase: SupabaseClient): Promise<WatchedAggregates> {
-  const pageSize = 1000;
-  const countByTitle = new Map<string, number>();
-  const lastWatchedByTitle = new Map<string, string>();
-  let start = 0;
+  const { data, error } = await supabase.rpc("get_watched_aggregates");
+  if (error) throw error;
 
-  for (;;) {
-    const { data, error } = await supabase
-      .from("watched_episodes")
-      .select("title_id, watched_at")
-      .range(start, start + pageSize - 1);
-    if (error) throw error;
-
-    const page = (data ?? []) as WatchedEpisodeRow[];
-    for (const row of page) {
-      countByTitle.set(row.title_id, (countByTitle.get(row.title_id) ?? 0) + 1);
-      if (row.watched_at) {
-        const current = lastWatchedByTitle.get(row.title_id);
-        if (!current || row.watched_at > current) {
-          lastWatchedByTitle.set(row.title_id, row.watched_at);
-        }
-      }
-    }
-
-    if (page.length < pageSize) break;
-    start += pageSize;
-  }
+  const rows = (data ?? []) as WatchedAggregateRow[];
+  const countByTitle = new Map(rows.map((row) => [row.titleId, row.count]));
+  const lastWatchedByTitle = new Map(
+    rows
+      .filter((row): row is WatchedAggregateRow & { lastWatchedAt: string } => row.lastWatchedAt != null)
+      .map((row) => [row.titleId, row.lastWatchedAt]),
+  );
 
   return { countByTitle, lastWatchedByTitle };
 }
