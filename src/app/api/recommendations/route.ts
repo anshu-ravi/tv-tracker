@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/auth";
-import type { DataSource, MediaType } from "@/lib/types";
+import type { DataSource, MediaType, RecommendationRail } from "@/lib/types";
 
 interface RecommendationRow {
   source: DataSource;
@@ -19,23 +19,6 @@ interface SeedTitleRow {
   id: string;
   title: string;
   poster_url: string | null;
-}
-
-export interface RecommendationItem {
-  source: DataSource;
-  sourceId: string;
-  mediaType: MediaType;
-  title: string;
-  posterUrl: string | null;
-  overview: string | null;
-  year: number | null;
-  score: number;
-}
-
-export interface RecommendationRail {
-  rail: string;
-  seedTitle: { titleId: string; title: string; posterUrl: string | null } | null;
-  items: RecommendationItem[];
 }
 
 // for_you_* rails render first, in this fixed order; "because:" rails follow
