@@ -61,7 +61,10 @@ export async function executePlan(opts: ExecuteOptions): Promise<void> {
           is_running: isRunning,
           total_episodes: totalEpisodes,
         },
-        { onConflict: "source,source_id", ignoreDuplicates: false },
+        // Unique on (source, source_id, source_namespace) — see
+        // supabase/migrations/20260823140000_titles_source_namespace.sql;
+        // tv and anime share the "tv" namespace, only movie is distinct.
+        { onConflict: "source,source_id,source_namespace", ignoreDuplicates: false },
       )
       .select("id")
       .single();
