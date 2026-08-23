@@ -172,6 +172,12 @@ export default async function HomePage() {
     .filter((ut): ut is UpcomingUserTitleRow & { titles: UpcomingTitleRow } => ut.titles !== null)
     .map((ut): UpcomingItem | null => {
       const title = ut.titles;
+      // Movies never belong on Upcoming (see the product decision in
+      // lib/tmdb.ts around getMovieTitle) — but a movie's first_air_date
+      // (its release date) is one of the two fallback candidates below, so
+      // a watchlisted movie with a future release date would otherwise
+      // wrongly surface here as if it had an upcoming episode.
+      if (title.media_type === "movie") return null;
       const candidates = [
         { date: title.next_episode_air_date, label: title.next_episode_label },
         { date: title.first_air_date, label: null as string | null },
