@@ -35,8 +35,12 @@ export type EnsureCatalogTitleResult =
   | { titleId: string }
   | { error: string; status: number };
 
-// Upserts just the titles row (unique on source, source_id) — shared by the
-// TV/anime path below (upsertTitleAndEpisodes) and the movie path
+// Upserts just the titles row (unique on source, source_id,
+// source_namespace — see
+// supabase/migrations/20260823140000_titles_source_namespace.sql; tv and
+// anime share the "tv" namespace, only movie is distinct, so a TV show and
+// a movie with the same TMDB id never collide) — shared by the TV/anime
+// path below (upsertTitleAndEpisodes) and the movie path
 // (upsertMovieTitleAndEpisode), which otherwise diverge entirely on how
 // they write episodes.
 async function upsertTitleRow(
@@ -62,7 +66,7 @@ async function upsertTitleRow(
         next_episode_air_date: title.nextEpisodeAirDate ?? null,
         next_episode_label: title.nextEpisodeLabel ?? null,
       },
-      { onConflict: "source,source_id" },
+      { onConflict: "source,source_id,source_namespace" },
     )
     .select("id")
     .single();
