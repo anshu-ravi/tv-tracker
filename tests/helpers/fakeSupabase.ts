@@ -5,7 +5,7 @@
 //   from(table).update(...).eq(...).eq(...).select().maybeSingle()
 //   from(table).delete().eq(...).eq(...).in(...)
 //   rpc(fnName, args)
-//   auth.getUser()
+//   auth.getUser() / auth.getClaims()
 //
 // Not a test file itself (lives outside the `tests/**/*.test.ts` glob).
 import { vi } from "vitest";
@@ -106,7 +106,7 @@ export interface FakeSupabaseOptions {
 }
 
 export interface FakeSupabaseClient {
-  auth: { getUser: ReturnType<typeof vi.fn> };
+  auth: { getUser: ReturnType<typeof vi.fn>; getClaims: ReturnType<typeof vi.fn> };
   from: ReturnType<typeof vi.fn>;
   rpc: ReturnType<typeof vi.fn>;
   /** Every builder created per table, in call order, for assertions. */
@@ -157,5 +157,14 @@ export function createFakeSupabase(
     error: options.authError ?? null,
   });
 
-  return { auth: { getUser }, from, rpc, builders, rpcCalls };
+  // requireUser() (src/lib/api/auth.ts) verifies the session via
+  // getClaims(), not getUser() — mirror that shape here, keying off the same
+  // `options.user`/`options.authError` so existing tests don't need to know
+  // which method the route handler calls under the hood.
+  const getClaims = vi.fn().mockResolvedValue({
+    data: options.user ? { claims: { sub: options.user.id } } : null,
+    error: options.authError ?? null,
+  });
+
+  return { auth: { getUser, getClaims }, from, rpc, builders, rpcCalls };
 }

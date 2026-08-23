@@ -9,14 +9,18 @@ import { createClient } from "@/lib/supabase/server";
 //   const auth = await requireUser();
 //   if (auth.response) return auth.response;
 //   const { supabase, user } = auth;
+//
+// Uses getClaims() rather than getUser() so the JWT is verified locally
+// (against the project's cached JWKS) instead of round-tripping to the Auth
+// server on every API request — see the matching comment in
+// lib/supabase/middleware.ts. Callers only ever need `user.id`, so the
+// returned shape is trimmed to that rather than exposing the full claims.
 export async function requireUser() {
   const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
-  if (error || !user) {
+  if (error || !claims) {
     return {
       supabase,
       user: null,
@@ -24,5 +28,5 @@ export async function requireUser() {
     } as const;
   }
 
-  return { supabase, user, response: null } as const;
+  return { supabase, user: { id: claims.sub }, response: null } as const;
 }
