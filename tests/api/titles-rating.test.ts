@@ -57,6 +57,25 @@ describe("PATCH /api/titles/:titleId/rating", () => {
     ]);
   });
 
+  it("accepts a tenths rating like 4.3", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        user_titles: { data: { title_id: "title-1", rating: 4.3 }, error: null },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
+    const response = await callPatch("title-1", { rating: 4.3 });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.userTitle).toEqual({ title_id: "title-1", rating: 4.3 });
+
+    const update = fake.builders.user_titles[0].calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({ rating: 4.3 });
+  });
+
   it("accepts null to clear a rating", async () => {
     const fake = createFakeSupabase({
       user: { id: "user-1" },
