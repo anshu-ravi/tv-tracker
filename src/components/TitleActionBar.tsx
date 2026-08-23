@@ -6,7 +6,7 @@ import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 import { useTitleActions } from "@/lib/useTitleActions";
 import { TagIcon, BookmarkPlusIcon, HeartIcon, CheckIcon, RefreshIcon } from "@/components/icons";
 
-const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
+const ALL_STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
   { value: "watching", label: "Watching" },
   { value: "completed", label: "Completed" },
@@ -59,6 +59,15 @@ export default function TitleActionBar({
     handleCreateList,
     toggleFavorite,
   } = useTitleActions({ source, sourceId, mediaType, titleId, initialStatus, initialFavorited });
+
+  // Movies have no "watching" bucket (see CLAUDE.md's movies product
+  // decision, enforced server-side in PATCH /api/titles/:id/status and POST
+  // /api/titles) — offering it here would just let the user pick an option
+  // that fails to save.
+  const statusOptions =
+    mediaType === "movie"
+      ? ALL_STATUS_OPTIONS.filter((o) => o.value !== "watching")
+      : ALL_STATUS_OPTIONS;
 
   const [statusOpen, setStatusOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
@@ -161,7 +170,7 @@ export default function TitleActionBar({
                 className="fixed inset-0 z-20 cursor-default"
               />
               <div className="card-bold absolute left-0 top-full z-30 mt-2 w-40 divide-y-[3px] divide-ink p-0">
-                {STATUS_OPTIONS.map((opt) => (
+                {statusOptions.map((opt) => (
                   <button
                     key={opt.value}
                     type="button"
