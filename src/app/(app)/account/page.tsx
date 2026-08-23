@@ -20,13 +20,16 @@ function toSummary(row: RefreshRunRow | null): LastRefreshedRunSummary | null {
 // header. Future home for per-user stats (shows tracked, episodes watched).
 export default async function AccountPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() verifies the JWT locally against the cached JWKS instead of
+  // calling out to the Auth server (see src/lib/supabase/middleware.ts) --
+  // user_metadata and email are standard GoTrue access token claims and
+  // this project has no custom access token hook that would strip them.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const claims = claimsData?.claims;
 
-  const displayName: string = user?.user_metadata?.display_name ?? "";
-  const avatarUrl: string | null = user?.user_metadata?.avatar_url ?? null;
-  const initial = (displayName || user?.email || "?").charAt(0).toUpperCase();
+  const displayName: string = claims?.user_metadata?.display_name ?? "";
+  const avatarUrl: string | null = claims?.user_metadata?.avatar_url ?? null;
+  const initial = (displayName || claims?.email || "?").charAt(0).toUpperCase();
 
   // Most recent run per scope (supabase/functions/refresh-air-dates), so the
   // owner can tell at a glance whether both the nightly ("running") and
@@ -81,12 +84,12 @@ export default async function AccountPage() {
             <p className="truncate text-sm font-bold text-ink-soft">No display name set</p>
           )}
           <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-soft">
-            {user?.email}
+            {claims?.email}
           </p>
         </div>
       </div>
 
-      {user && (
+      {claims && (
         <ProfileEditor
           initialDisplayName={displayName}
           initialAvatarUrl={avatarUrl}
@@ -98,7 +101,7 @@ export default async function AccountPage() {
           <p className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">
             Signed in as
           </p>
-          <p className="truncate text-sm font-bold">{user?.email}</p>
+          <p className="truncate text-sm font-bold">{claims?.email}</p>
         </div>
         <form action={signOut}>
           <button
