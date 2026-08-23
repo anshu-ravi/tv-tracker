@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
-import { getTvCredits } from "@/lib/tmdb";
-import { getTvRatings } from "@/lib/ratings";
+import { getMovieCredits, getTvCredits } from "@/lib/tmdb";
+import { getMovieRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import RatingBadges from "@/components/RatingBadges";
@@ -39,14 +39,18 @@ interface TitleRow {
 
 interface EpisodeRow {
   id: string;
-  season_number: number;
-  episode_number: number;
+  season_number: number | null;
+  episode_number: number | null;
   absolute_number: number | null;
   name: string | null;
   air_date: string | null;
   overview: string | null;
   filler_type: "canon" | "filler" | "mixed" | null;
   filler_name: string | null;
+  // Only ever set on a movie's single synthetic episode row (see
+  // supabase/migrations/20260812090000_movies_synthetic_episode.sql) — null
+  // for every TV/anime episode.
+  runtime: number | null;
 }
 
 // Per-episode filler tag + "unclassified" dash display, factored out for unit
@@ -127,7 +131,7 @@ export default async function TitleDetailPage({
     supabase
       .from("episodes")
       .select(
-        "id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name",
+        "id, season_number, episode_number, absolute_number, name, air_date, overview, filler_type, filler_name, runtime",
       )
       .eq("title_id", titleId)
       .order("season_number", { ascending: true })
@@ -148,24 +152,40 @@ export default async function TitleDetailPage({
     ((watchedData ?? []) as { episode_id: string }[]).map((w) => w.episode_id),
   );
 
+  const isMovie = title.media_type === "movie";
+
   // Credits are fetched live from the provider (not stored in the DB) and
   // only needed on this page, so failures here should never break the rest
-  // of the screen — fall back to empty lists.
+  // of the screen — fall back to empty lists. Movies hit /movie/{id}
+  // credits (directors, not created_by) rather than /tv/{id}'s.
   let credits: TitleCredits = { creators: [], cast: [] };
   try {
-    credits = await getTvCredits(title.source_id);
+    credits = isMovie
+      ? await getMovieCredits(title.source_id)
+      : await getTvCredits(title.source_id);
   } catch (err) {
     console.error("Failed to fetch credits:", err);
   }
 
   // Ratings (IMDb/RT via OMDb) are also fetched live and never stored — same
-  // fallback pattern as credits.
+  // fallback pattern as credits. Movies resolve their IMDb id via
+  // getMovieImdbId (see lib/ratings.ts) rather than getTvImdbId.
   let ratings: TitleRatings = { imdb: null, rottenTomatoes: null };
   try {
-    ratings = await getTvRatings(title.source_id);
+    ratings = isMovie
+      ? await getMovieRatings(title.source_id)
+      : await getTvRatings(title.source_id);
   } catch (err) {
     console.error("Failed to fetch ratings:", err);
   }
+
+  // A movie's one episode row is the synthetic NULL-season/episode row (see
+  // supabase/migrations/20260812090000_movies_synthetic_episode.sql) — it
+  // carries the runtime for display, but it's not a "season" and has no
+  // watch tick of its own (marking a movie "completed" auto-syncs that row
+  // via markTitleWatched, see api/titles/route.ts), so it's never grouped
+  // into SeasonGroup/EpisodeSection below.
+  const movieRuntime = isMovie ? episodes[0]?.runtime ?? null : null;
 
   // Group episodes by season, preserving the query's season/episode order,
   // and shape each row down to what the client EpisodeSection needs (it
@@ -176,7 +196,9 @@ export default async function TitleDetailPage({
   // see the migration that added these columns. Name precedence is the
   // opposite of Home's: TMDB's name wins, filler_name is only a fallback
   // when TMDB gave us nothing (unchanged from the old live-scrape version).
-  const seasonNumbers = Array.from(new Set(episodes.map((e) => e.season_number)));
+  const seasonNumbers = isMovie
+    ? []
+    : Array.from(new Set(episodes.map((e) => e.season_number))) as number[];
   const seasons: SeasonGroup[] = seasonNumbers.map((seasonNumber) => ({
     seasonNumber,
     episodes: episodes
@@ -185,7 +207,7 @@ export default async function TitleDetailPage({
         const filler = resolveEpisodeFillerDisplay(title.filler_available, e.filler_type);
         return {
           id: e.id,
-          episodeNumber: e.episode_number,
+          episodeNumber: e.episode_number as number,
           absoluteNumber: e.absolute_number,
           name: resolveEpisodeName(e.name, e.filler_name),
           airLabel: formatDate(e.air_date),
@@ -242,13 +264,19 @@ export default async function TitleDetailPage({
           <h1 className="display text-2xl leading-tight">{title.title}</h1>
           <p className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
             {year && <span>{year}</span>}
-            {/* Below "completed", swap the plain running/ended text for the
+            {isMovie ? (
+              // A movie's is_running is always false (see the field-name-diff
+              // comment above getMovieTitle in lib/tmdb.ts) — the
+              // Running/Ended/Caught-up language below is TV-specific, so a
+              // movie shows its runtime here instead.
+              movieRuntime && <span>{movieRuntime} min</span>
+            ) : /* Below "completed", swap the plain running/ended text for the
                 same distinction the poster badge makes (see PosterCard):
                 "Ended" (genuinely over) vs. "Caught up" (current, but the
                 show will get more episodes). For any other status the plain
                 "Running"/"Ended" text is enough — a watchlist/watching
-                title is neither "ended" nor "caught up" yet. */}
-            {status === "completed" ? (
+                title is neither "ended" nor "caught up" yet. */
+            status === "completed" ? (
               <span
                 className={`inline-block -rotate-3 border-2 border-ink px-1.5 py-0.5 text-[10px] font-bold normal-case tracking-normal ${
                   title.is_running ? "bg-acid text-ink" : "bg-ink text-paper"
@@ -284,7 +312,7 @@ export default async function TitleDetailPage({
 
       {credits.creators.length > 0 && (
         <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-          Created by {credits.creators.join(", ")}
+          {isMovie ? "Directed by" : "Created by"} {credits.creators.join(", ")}
         </p>
       )}
 
@@ -319,15 +347,17 @@ export default async function TitleDetailPage({
         </div>
       )}
 
-      <div className="mt-6 px-4">
-        <h2 className="display text-xl">Episodes</h2>
+      {!isMovie && (
+        <div className="mt-6 px-4">
+          <h2 className="display text-xl">Episodes</h2>
 
-        <EpisodeSection
-          titleId={title.id}
-          seasons={seasons}
-          initialWatchedIds={Array.from(watchedIds)}
-        />
-      </div>
+          <EpisodeSection
+            titleId={title.id}
+            seasons={seasons}
+            initialWatchedIds={Array.from(watchedIds)}
+          />
+        </div>
+      )}
     </div>
   );
 }

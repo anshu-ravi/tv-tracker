@@ -28,9 +28,15 @@ interface UserTitleRow {
 export default async function BucketedGridPage({
   mediaType,
   heading,
+  buckets = BUCKET_ORDER.map((b) => b.status),
 }: {
   mediaType: MediaType;
   heading: string;
+  // Which status buckets to render, in order — defaults to all four.
+  // Movies have no "watching" bucket (see CLAUDE.md's movies product
+  // decision), so the Movies tab passes a subset rather than showing a
+  // permanently-empty "Nothing here yet." Watching section.
+  buckets?: WatchStatus[];
 }) {
   const supabase = await createClient();
 
@@ -74,19 +80,21 @@ export default async function BucketedGridPage({
     });
   }
 
+  const sections = BUCKET_ORDER.filter((bucket) => buckets.includes(bucket.status));
+
   // Only the first bucket section that actually has titles renders anything
   // above the fold — an earlier empty bucket ("Nothing here yet.") takes up
   // little vertical space but a later bucket's grid never reaches the top
   // of the viewport, so priority must land on exactly one section's first
   // row, not every section that happens to start a 3-col grid.
-  const firstNonEmptyStatus = BUCKET_ORDER.find(
+  const firstNonEmptyStatus = sections.find(
     (bucket) => titlesByStatus[bucket.status].length > 0,
   )?.status;
 
   return (
     <div className="pb-6">
       <h1 className="display px-4 pt-4 text-2xl">{heading}</h1>
-      {BUCKET_ORDER.map((bucket) => (
+      {sections.map((bucket) => (
         <BucketSection
           key={bucket.status}
           label={bucket.label}

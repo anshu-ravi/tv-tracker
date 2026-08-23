@@ -1,9 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
-import { getTvCredits, getTvTitle } from "@/lib/tmdb";
+import { getMovieCredits, getMovieTitle, getTvCredits, getTvTitle } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
-import { getTvRatings } from "@/lib/ratings";
+import { getMovieRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import PreviewEpisodeList, { type PreviewSeasonGroup } from "@/components/PreviewEpisodeList";
 import RatingBadges from "@/components/RatingBadges";
@@ -48,13 +48,14 @@ export default async function PreviewPage({
 
   if (source !== "tmdb") notFound();
   const dataSource = source as DataSource;
-  // TMDB no longer implies "tv" — it's also the source for anime now (see
-  // classifyTmdbSearchResult in lib/tmdb.ts), and TMDB's own id space
-  // doesn't distinguish the two, so the search result link carries
+  // TMDB no longer implies "tv" — it's also the source for anime and movies
+  // now (see classifyTmdbSearchResult in lib/tmdb.ts), and TMDB's own id
+  // space doesn't distinguish them, so the search result link carries
   // ?mediaType=... explicitly (see SearchResultCard). Fall back to "tv" for
   // a bare/bookmarked link with no query param — the more common case by
   // far.
-  const mediaType: MediaType = mediaTypeParam === "anime" ? "anime" : "tv";
+  const mediaType: MediaType =
+    mediaTypeParam === "anime" ? "anime" : mediaTypeParam === "movie" ? "movie" : "tv";
 
   // Cheap existing-library check first: if this title is already tracked,
   // send the user straight to the real (writable, DB-backed) detail page
@@ -91,27 +92,56 @@ export default async function PreviewPage({
     if (userTitle) redirect(`/title/${existingId}`);
   }
 
-  let fetched: { title: NormalizedTitle; episodes: NormalizedEpisode[] };
-  try {
-    fetched = await getTvTitle(sourceId, { mediaType });
-  } catch (err) {
-    console.error("Failed to fetch live title for preview:", err);
-    notFound();
-  }
-  const { title, episodes } = fetched;
-
+  // Movies hit an entirely different set of TMDB endpoints (no
+  // seasons/episodes, a single runtime instead — see the field-name-diff
+  // comment block in lib/tmdb.ts above getMovieTitle) and ratings resolve
+  // through getMovieImdbId rather than getTvImdbId, so this branches on
+  // mediaType up front rather than bolting a movie case onto the tv fetch
+  // calls below.
+  let title: NormalizedTitle;
+  let episodes: NormalizedEpisode[] = [];
+  let runtimeMinutes: number | null = null;
   let credits: TitleCredits = { creators: [], cast: [] };
-  try {
-    credits = await getTvCredits(sourceId);
-  } catch (err) {
-    console.error("Failed to fetch credits:", err);
-  }
-
   let ratings: TitleRatings = { imdb: null, rottenTomatoes: null };
-  try {
-    ratings = await getTvRatings(sourceId);
-  } catch (err) {
-    console.error("Failed to fetch ratings:", err);
+
+  if (mediaType === "movie") {
+    try {
+      const fetched = await getMovieTitle(sourceId);
+      title = fetched.title;
+      runtimeMinutes = fetched.episode.runtime ?? null;
+    } catch (err) {
+      console.error("Failed to fetch live movie for preview:", err);
+      notFound();
+    }
+    try {
+      credits = await getMovieCredits(sourceId);
+    } catch (err) {
+      console.error("Failed to fetch movie credits:", err);
+    }
+    try {
+      ratings = await getMovieRatings(sourceId);
+    } catch (err) {
+      console.error("Failed to fetch movie ratings:", err);
+    }
+  } else {
+    try {
+      const fetched = await getTvTitle(sourceId, { mediaType });
+      title = fetched.title;
+      episodes = fetched.episodes;
+    } catch (err) {
+      console.error("Failed to fetch live title for preview:", err);
+      notFound();
+    }
+    try {
+      credits = await getTvCredits(sourceId);
+    } catch (err) {
+      console.error("Failed to fetch credits:", err);
+    }
+    try {
+      ratings = await getTvRatings(sourceId);
+    } catch (err) {
+      console.error("Failed to fetch ratings:", err);
+    }
   }
 
   const fillerData: Map<number, EpisodeFiller> | null =
@@ -183,7 +213,11 @@ export default async function PreviewPage({
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <h1 className="display text-2xl leading-tight">{title.title}</h1>
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-            {[year, title.isRunning ? "Running" : "Ended"].filter(Boolean).join(" · ")}
+            {mediaType === "movie"
+              ? [year, runtimeMinutes ? `${runtimeMinutes} min` : null]
+                  .filter(Boolean)
+                  .join(" · ")
+              : [year, title.isRunning ? "Running" : "Ended"].filter(Boolean).join(" · ")}
           </p>
           <TitleActionBar source={dataSource} sourceId={sourceId} mediaType={mediaType} />
           <RatingBadges ratings={ratings} />
@@ -196,7 +230,7 @@ export default async function PreviewPage({
 
       {credits.creators.length > 0 && (
         <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-          Created by {credits.creators.join(", ")}
+          {mediaType === "movie" ? "Directed by" : "Created by"} {credits.creators.join(", ")}
         </p>
       )}
 
@@ -228,10 +262,12 @@ export default async function PreviewPage({
         </div>
       )}
 
-      <div className="mt-6 px-4">
-        <h2 className="display text-xl">Episodes</h2>
-        <PreviewEpisodeList seasons={seasons} />
-      </div>
+      {mediaType !== "movie" && (
+        <div className="mt-6 px-4">
+          <h2 className="display text-xl">Episodes</h2>
+          <PreviewEpisodeList seasons={seasons} />
+        </div>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 import { useTitleActions } from "@/lib/useTitleActions";
 import { TagIcon, HeartIcon, CheckIcon } from "@/components/icons";
 
-const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
+const ALL_STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
   { value: "watching", label: "Watching" },
   { value: "completed", label: "Completed" },
@@ -75,6 +75,15 @@ export default function CardActionSheet({
     handleCreateList,
     toggleFavorite,
   } = useTitleActions({ source, sourceId, mediaType, titleId, initialStatus, initialFavorited });
+
+  // Movies have no "watching" bucket (see CLAUDE.md's movies product
+  // decision, enforced server-side in PATCH /api/titles/:id/status and POST
+  // /api/titles) — offering it here would just let the user pick an option
+  // that fails to save.
+  const statusOptions =
+    mediaType === "movie"
+      ? ALL_STATUS_OPTIONS.filter((o) => o.value !== "watching")
+      : ALL_STATUS_OPTIONS;
 
   function openSheet(e: React.MouseEvent) {
     e.preventDefault();
@@ -150,7 +159,7 @@ export default function CardActionSheet({
                     <TagIcon className="h-3.5 w-3.5" /> Status
                   </h3>
                   <div className="grid grid-cols-2 gap-2">
-                    {STATUS_OPTIONS.map((opt) => (
+                    {statusOptions.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"

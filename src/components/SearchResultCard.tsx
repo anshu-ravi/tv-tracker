@@ -6,7 +6,7 @@ import Image from "next/image";
 import type { SearchResult, WatchStatus } from "@/lib/types";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
-const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
+const ALL_STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: "watchlist", label: "Watchlist" },
   { value: "watching", label: "Watching" },
   { value: "completed", label: "Completed" },
@@ -33,6 +33,14 @@ export default function SearchResultCard({
   onAdded: () => void;
   priority?: boolean;
 }) {
+  // Movies have no "watching" bucket (see CLAUDE.md's movies product
+  // decision, enforced server-side in POST /api/titles) — offering it here
+  // would just let the user pick an option that 400s on Add.
+  const statusOptions =
+    result.mediaType === "movie"
+      ? ALL_STATUS_OPTIONS.filter((o) => o.value !== "watching")
+      : ALL_STATUS_OPTIONS;
+
   const [status, setStatus] = useState<WatchStatus>(existingStatus ?? "watchlist");
   const [pending, setPending] = useState(false);
   const [savedStatus, setSavedStatus] = useState<WatchStatus | undefined>(
@@ -115,7 +123,7 @@ export default function SearchResultCard({
 
         {savedStatus ? (
           <p className="stamp mt-2 block w-full text-center text-[10px]">
-            In {STATUS_OPTIONS.find((o) => o.value === savedStatus)?.label ?? savedStatus}
+            In {statusOptions.find((o) => o.value === savedStatus)?.label ?? savedStatus}
           </p>
         ) : (
           <div className="mt-2 flex flex-col gap-1.5">
@@ -124,7 +132,7 @@ export default function SearchResultCard({
               onChange={(e) => setStatus(e.target.value as WatchStatus)}
               className="border-[3px] border-ink bg-paper px-1 py-1 text-[10px] font-bold uppercase tracking-wide"
             >
-              {STATUS_OPTIONS.map((option) => (
+              {statusOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

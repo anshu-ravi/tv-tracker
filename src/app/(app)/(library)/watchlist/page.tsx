@@ -17,9 +17,10 @@ interface UserTitleRow {
   titles: TitleRow | null;
 }
 
-// The `watchlist` bucket across both media types (TV + anime) — split into
-// two horizontally-swipeable carousels (one per media_type) rather than the
-// single combined grid the TV/Anime tabs use for their buckets.
+// The `watchlist` bucket across all three media types (TV, anime, movie) —
+// split into three horizontally-swipeable carousels (one per media_type)
+// rather than the single combined grid the TV/Anime/Movies tabs use for
+// their buckets.
 export default async function WatchlistPage() {
   const supabase = await createClient();
 
@@ -49,6 +50,7 @@ export default async function WatchlistPage() {
 
   const tvTitles = titles.filter((t) => t.mediaType === "tv");
   const animeTitles = titles.filter((t) => t.mediaType === "anime");
+  const movieTitles = titles.filter((t) => t.mediaType === "movie");
 
   return (
     <div className="pb-6">
@@ -68,6 +70,13 @@ export default async function WatchlistPage() {
             heading="Anime"
             titles={animeTitles}
             isFirstSection={tvTitles.length === 0 && animeTitles.length > 0}
+          />
+          <WatchlistCarousel
+            heading="Movies"
+            titles={movieTitles}
+            isFirstSection={
+              tvTitles.length === 0 && animeTitles.length === 0 && movieTitles.length > 0
+            }
           />
         </>
       )}
