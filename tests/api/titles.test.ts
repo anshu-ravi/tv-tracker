@@ -229,7 +229,9 @@ describe("POST /api/titles", () => {
     const titlesUpsert = fake.builders.titles[0].calls.find(
       (c) => c.method === "upsert",
     );
-    expect(titlesUpsert?.args[1]).toEqual({ onConflict: "source,source_id" });
+    expect(titlesUpsert?.args[1]).toEqual({
+      onConflict: "source,source_id,source_namespace",
+    });
 
     const episodesUpsert = fake.builders.episodes[0].calls.find(
       (c) => c.method === "upsert",
