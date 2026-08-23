@@ -7,8 +7,8 @@
 import { getRecommendationCandidates, type RecommendationCandidate } from "@/lib/tmdb";
 import { getFavoriteTitleIds } from "@/lib/favorites";
 import {
-  DEFAULT_SEED_COUNT,
   applyVoteFloor,
+  excludeFranchiseSequels,
   excludeKnownTitles,
   scoreCandidates,
   selectSeeds,
@@ -26,13 +26,15 @@ import { titleKey, type DataSource, type MediaType, type WatchStatus } from "@/l
 type SupabaseClient = any;
 
 const CANDIDATE_FETCH_CONCURRENCY = 3;
-const FOR_YOU_RAIL_SIZE = 20;
-const BECAUSE_RAIL_COUNT = 3;
-const BECAUSE_RAIL_SIZE = 10;
+// Rail sizes -- exported as named constants since these get tuned again.
+export const FOR_YOU_RAIL_SIZE = 12;
+export const BECAUSE_RAIL_COUNT = 8;
+export const BECAUSE_RAIL_SIZE = 8;
 const MEDIA_TYPES: MediaType[] = ["tv", "anime", "movie"];
-// Roughly the total slots every rail combined can hold (3 * 20 for_you +
-// 3 * 10 because) — applyVoteFloor relaxes its floor until at least this
-// many candidates clear it, so a thin pool still fills the rails.
+// Roughly the total slots every rail combined can hold (3 for_you rails +
+// BECAUSE_RAIL_COUNT because rails) — applyVoteFloor relaxes its floor until
+// at least this many candidates clear it, so a thin pool still fills the
+// rails.
 const VOTE_FLOOR_MIN_RESULTS = FOR_YOU_RAIL_SIZE * 3 + BECAUSE_RAIL_COUNT * BECAUSE_RAIL_SIZE;
 
 // Small helper: run `items` through `worker` with at most `limit` in flight
@@ -110,20 +112,24 @@ interface UserTitleSeedRow {
     source_id: string;
     media_type: MediaType;
     total_episodes: number | null;
+    title: string;
   } | null;
 }
 
 // Every tracked title, weighting-ready. `trackedKeys` (the full 198-title
 // set, not just the seeds selectSeeds later picks) is what excludeKnownTitles
 // uses — a title must never be recommended just because it wasn't chosen as
-// a seed this run.
+// a seed this run. `trackedTitles` is the raw title text of every tracked
+// title, for excludeFranchiseSequels.
 async function loadSeeds(
   supabase: SupabaseClient,
-): Promise<{ seeds: SeedInput[]; trackedKeys: Set<string> }> {
+): Promise<{ seeds: SeedInput[]; trackedKeys: Set<string>; trackedTitles: string[] }> {
   const [{ data, error }, watched, favoriteIds] = await Promise.all([
     supabase
       .from("user_titles")
-      .select("title_id, status, rating, titles(source, source_id, media_type, total_episodes)"),
+      .select(
+        "title_id, status, rating, titles(source, source_id, media_type, total_episodes, title)",
+      ),
     loadWatchedAggregates(supabase),
     getFavoriteTitleIds(supabase),
   ]);
@@ -132,10 +138,12 @@ async function loadSeeds(
   const rows = (data ?? []) as UserTitleSeedRow[];
   const seeds: SeedInput[] = [];
   const trackedKeys = new Set<string>();
+  const trackedTitles: string[] = [];
 
   for (const row of rows) {
     if (!row.titles) continue; // orphaned row — shouldn't happen, skip defensively
     trackedKeys.add(titleKey(row.titles.source, row.titles.source_id, row.titles.media_type));
+    trackedTitles.push(row.titles.title);
     seeds.push({
       titleId: row.title_id,
       sourceId: row.titles.source_id,
@@ -149,7 +157,7 @@ async function loadSeeds(
     });
   }
 
-  return { seeds, trackedKeys };
+  return { seeds, trackedKeys, trackedTitles };
 }
 
 interface DismissalRow {
@@ -281,18 +289,19 @@ export async function buildRecommendations(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<BuildRecommendationsSummary> {
-  const [{ seeds: allSeeds, trackedKeys }, dismissedKeys] = await Promise.all([
+  const [{ seeds: allSeeds, trackedKeys, trackedTitles }, dismissedKeys] = await Promise.all([
     loadSeeds(supabase),
     loadDismissedKeys(supabase),
   ]);
 
-  const weightedSeeds = selectSeeds(allSeeds, new Date(), DEFAULT_SEED_COUNT);
+  const weightedSeeds = selectSeeds(allSeeds, new Date());
   const { merged, errors } = await fetchAndMergeCandidates(weightedSeeds);
 
   const excludedKeys = new Set([...trackedKeys, ...dismissedKeys]);
   const eligible = excludeKnownTitles(Array.from(merged.values()), excludedKeys);
   const floored = applyVoteFloor(eligible, VOTE_FLOOR_MIN_RESULTS);
-  const scored = scoreCandidates(floored).sort((a, b) => b.score - a.score);
+  const deduped = excludeFranchiseSequels(scoreCandidates(floored), trackedTitles);
+  const scored = deduped.sort((a, b) => b.score - a.score);
 
   const rows: RecommendationRow[] = [];
   const railCounts: Record<string, number> = {};
@@ -304,11 +313,12 @@ export async function buildRecommendations(
     rows.push(...top.map((s) => toRow(s, rail, null)));
   }
 
-  // "Because you finished X" rails: up to 3, one per highest-weighted
-  // completed seed, each holding that seed's own top candidates. The rail
-  // key embeds the seed's titleId — recommendations' unique constraint is
-  // (user_id, rail, source, source_id, media_type), so a shared "because"
-  // label would collide the moment two seeds recommend the same title.
+  // "Because you finished X" rails: up to BECAUSE_RAIL_COUNT, one per
+  // highest-weighted completed seed, each holding that seed's own top
+  // candidates. The rail key embeds the seed's titleId — recommendations'
+  // unique constraint is (user_id, rail, source, source_id, media_type), so
+  // a shared "because" label would collide the moment two seeds recommend
+  // the same title.
   const becauseSeeds = weightedSeeds
     .filter((ws) => ws.seed.status === "completed")
     .sort((a, b) => b.weight - a.weight)

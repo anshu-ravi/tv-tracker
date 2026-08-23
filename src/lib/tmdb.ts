@@ -644,7 +644,7 @@ export async function getSimilarMovie(id: string): Promise<SearchResult[]> {
 // results across many seeds before lib/recommendations.ts scoreCandidates
 // does the ranking, so ranking here would be thrown away. Only 2 pages (vs
 // 3 for similar-titles): a thin single-seed pool matters less here since
-// candidates pool across up to DEFAULT_SEED_COUNT seeds.
+// candidates pool across many seeds per media type (see selectSeeds).
 const RECOMMENDATION_CANDIDATE_PAGES = 2;
 const RECOMMENDATION_CANDIDATE_REVALIDATE_SECONDS = 60 * 60 * 24;
 

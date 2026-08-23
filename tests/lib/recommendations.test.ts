@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   applyVoteFloor,
+  excludeFranchiseSequels,
   excludeKnownTitles,
+  FRANCHISE_MIN_TRACKED_TITLE_LENGTH,
   positionDecay,
   RECENCY_FLOOR,
   RECENCY_UNKNOWN,
   scoreCandidates,
+  SEED_COUNT_ANIME,
+  SEED_COUNT_MOVIE,
+  SEED_COUNT_TV,
   seedWeight,
   selectSeeds,
   type CandidateInput,
+  type ScoredCandidate,
   type SeedInput,
 } from "@/lib/recommendations";
-import { titleKey } from "@/lib/types";
+import { titleKey, type MediaType } from "@/lib/types";
 
 const NOW = new Date("2026-08-23T00:00:00Z");
 
@@ -129,23 +135,97 @@ describe("seedWeight", () => {
   });
 });
 
+describe("completionFactor for movies", () => {
+  it("scores a completed movie with a null totalEpisodes the same as a fully-watched TV title", () => {
+    const completedMovie = seedWeight(
+      seed({ mediaType: "movie", status: "completed", watchedEpisodes: 1, totalEpisodes: null }),
+      NOW,
+    );
+    const completedTv = seedWeight(
+      seed({ mediaType: "tv", status: "completed", watchedEpisodes: 10, totalEpisodes: 10 }),
+      NOW,
+    );
+
+    expect(completedMovie).toBeCloseTo(completedTv, 10);
+  });
+
+  it("does not give an unwatched watchlist movie a full completion factor", () => {
+    const watchlistMovie = seedWeight(
+      seed({ mediaType: "movie", status: "watchlist", watchedEpisodes: 0, totalEpisodes: null }),
+      NOW,
+    );
+    const completedMovie = seedWeight(
+      seed({ mediaType: "movie", status: "completed", watchedEpisodes: 1, totalEpisodes: null }),
+      NOW,
+    );
+
+    // Both use the completion floor vs. full completion, so a never-watched
+    // watchlist movie must land well under a fully-watched one.
+    expect(watchlistMovie).toBeGreaterThan(0);
+    expect(watchlistMovie).toBeLessThan(completedMovie);
+  });
+});
+
+function manyOfType(mediaType: MediaType, n: number, overrides: Partial<SeedInput> = {}): SeedInput[] {
+  return Array.from({ length: n }, (_, i) =>
+    seed({ titleId: `${mediaType}-${i}`, mediaType, ...overrides }),
+  );
+}
+
 describe("selectSeeds", () => {
-  it("caps the result at N and keeps a strong negative seed in the selection", () => {
+  it("caps the result at the given per-media-type count and keeps a strong negative seed in the selection", () => {
     const strongNegative = seed({
       titleId: "negative",
+      mediaType: "tv",
       status: "dnf",
       isFavorite: true,
       watchedEpisodes: 10,
       totalEpisodes: 10,
     });
-    const manyWeak = Array.from({ length: 40 }, (_, i) =>
-      seed({ titleId: `weak-${i}`, status: "watchlist" }),
-    );
+    const manyWeak = manyOfType("tv", 40, { status: "watchlist" });
 
-    const selected = selectSeeds([strongNegative, ...manyWeak], NOW, 5);
+    const selected = selectSeeds([strongNegative, ...manyWeak], NOW, { tv: 5, anime: 0, movie: 0 });
 
     expect(selected).toHaveLength(5);
     expect(selected.some((s) => s.seed.titleId === "negative")).toBe(true);
+  });
+
+  it("selects the top N per media type independently, so TV titles never crowd out a movie seed", () => {
+    // More completed/favorited TV seeds than SEED_COUNT_TV, all far
+    // outweighing one low-weight watchlist movie -- a single global top-N
+    // cutoff would drop the movie entirely; per-media-type selection must
+    // not.
+    const strongTv = manyOfType("tv", SEED_COUNT_TV + 5, { status: "completed", isFavorite: true });
+    const weakMovie = seed({ titleId: "movie-1", mediaType: "movie", status: "watchlist" });
+
+    const selected = selectSeeds([...strongTv, weakMovie], NOW);
+
+    expect(selected.filter((s) => s.seed.mediaType === "tv")).toHaveLength(SEED_COUNT_TV);
+    expect(selected.some((s) => s.seed.titleId === "movie-1")).toBe(true);
+  });
+
+  it("uses SEED_COUNT_TV / SEED_COUNT_ANIME / SEED_COUNT_MOVIE as the default per-type quotas", () => {
+    const seeds = [
+      ...manyOfType("tv", 20, { status: "completed" }),
+      ...manyOfType("anime", 20, { status: "completed" }),
+      ...manyOfType("movie", 20, { status: "completed" }),
+    ];
+
+    const selected = selectSeeds(seeds, NOW);
+
+    expect(selected.filter((s) => s.seed.mediaType === "tv")).toHaveLength(SEED_COUNT_TV);
+    expect(selected.filter((s) => s.seed.mediaType === "anime")).toHaveLength(SEED_COUNT_ANIME);
+    expect(selected.filter((s) => s.seed.mediaType === "movie")).toHaveLength(SEED_COUNT_MOVIE);
+  });
+
+  it("contributes fewer seeds, never backfilled from another type, when short of its quota", () => {
+    const selected = selectSeeds(
+      [seed({ titleId: "only-movie", mediaType: "movie", status: "completed" })],
+      NOW,
+    );
+
+    expect(selected).toHaveLength(1);
+    expect(selected[0].seed.titleId).toBe("only-movie");
   });
 });
 
@@ -217,6 +297,21 @@ describe("scoreCandidates", () => {
 
     expect(scoredEarly.coOccurrenceScore).toBeGreaterThan(scoredLate.coOccurrenceScore);
   });
+
+  it("scores a high-vote-count hub candidate lower than a low-vote-count one with an identical co-occurrence sum", () => {
+    const recommendedBy = [
+      { seedId: "s1", weight: 1.0, rank: 0 },
+      { seedId: "s2", weight: 1.0, rank: 0 },
+    ];
+    const hub = candidate({ sourceId: "hub", voteCount: 200000, recommendedBy });
+    const niche = candidate({ sourceId: "niche", voteCount: 20, recommendedBy });
+
+    const [scoredHub, scoredNiche] = scoreCandidates([hub, niche]);
+
+    // Same raw signal, so this isolates the hub-damping inversion.
+    expect(scoredHub.coOccurrenceScore).toBeCloseTo(scoredNiche.coOccurrenceScore, 10);
+    expect(scoredHub.score).toBeLessThan(scoredNiche.score);
+  });
 });
 
 describe("applyVoteFloor", () => {
@@ -249,5 +344,52 @@ describe("excludeKnownTitles", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].sourceId).toBe("keep-id");
+  });
+});
+
+function scored(overrides: Partial<CandidateInput> = {}, score = 1): ScoredCandidate {
+  return {
+    candidate: candidate(overrides),
+    coOccurrenceScore: score,
+    score,
+  };
+}
+
+describe("excludeFranchiseSequels", () => {
+  it("drops a franchise continuation whose title contains a tracked title as a whole word", () => {
+    const boruto = scored({ sourceId: "boruto", title: "Boruto: Naruto Next Generations" });
+    const unrelated = scored({ sourceId: "aot", title: "Attack on Titan" });
+
+    const result = excludeFranchiseSequels([boruto, unrelated], ["Naruto"]);
+
+    expect(result.map((r) => r.candidate.sourceId)).toEqual(["aot"]);
+  });
+
+  it("does not let a tracked title shorter than the length guard eliminate unrelated candidates", () => {
+    expect("Dark".length).toBeLessThan(FRANCHISE_MIN_TRACKED_TITLE_LENGTH);
+    const darkMatter = scored({ sourceId: "dark-matter", title: "Dark Matter" });
+
+    const result = excludeFranchiseSequels([darkMatter], ["Dark"]);
+
+    expect(result.map((r) => r.candidate.sourceId)).toEqual(["dark-matter"]);
+  });
+
+  it("collapses duplicate candidates with the same normalized title, keeping the higher-scoring one", () => {
+    const lowerScored = scored({ sourceId: "ranma-old", title: "Ranma ½" }, 1);
+    const higherScored = scored({ sourceId: "ranma-new", title: "Ranma ½" }, 5);
+
+    const result = excludeFranchiseSequels([lowerScored, higherScored], []);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].candidate.sourceId).toBe("ranma-new");
+    expect(result[0].score).toBe(5);
+  });
+
+  it("keeps a genuinely unrelated candidate untouched", () => {
+    const unrelated = scored({ sourceId: "peripheral", title: "The Peripheral" });
+
+    const result = excludeFranchiseSequels([unrelated], ["Naruto", "Pantheon", "Code Geass"]);
+
+    expect(result.map((r) => r.candidate.sourceId)).toEqual(["peripheral"]);
   });
 });

@@ -124,7 +124,13 @@ function userTitleRow(f: UserTitleFixture) {
     title_id: f.title_id,
     status: f.status,
     rating: f.rating,
-    titles: { source: "tmdb", source_id: f.source_id, media_type: "tv", total_episodes: 10 },
+    titles: {
+      source: "tmdb",
+      source_id: f.source_id,
+      media_type: "tv",
+      total_episodes: 10,
+      title: `Tracked Show ${f.source_id}`,
+    },
   };
 }
 
