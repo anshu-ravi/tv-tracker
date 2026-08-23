@@ -6,6 +6,7 @@ import { getMovieRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import RatingBadges from "@/components/RatingBadges";
+import SimilarRail from "@/components/SimilarRail";
 import TitleActionBar from "@/components/TitleActionBar";
 import type { DataSource, MediaType, TitleCredits, TitleRatings, WatchStatus } from "@/lib/types";
 
@@ -358,6 +359,14 @@ export default async function TitleDetailPage({
           />
         </div>
       )}
+
+      <div className="mt-6 px-4">
+        <SimilarRail
+          source={title.source}
+          sourceId={title.source_id}
+          mediaType={title.media_type}
+        />
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ export default function ExploreRail({
   existing,
   onAdded,
   isFirstSection = false,
+  headingClassName = "text-lg",
 }: {
   heading: string;
   results: SearchResult[];
@@ -24,12 +25,15 @@ export default function ExploreRail({
   // state (Trending TV) — its first couple of cards are what's actually
   // above the fold; the Trending Anime rail below it never is.
   isFirstSection?: boolean;
+  // Lets a caller outside Search (e.g. SimilarRail, which matches a title
+  // page's larger section headings) size the heading differently.
+  headingClassName?: string;
 }) {
   if (results.length === 0) return null;
 
   return (
     <section className="mb-5">
-      <h2 className="display mb-2 text-lg">{heading}</h2>
+      <h2 className={`display mb-2 ${headingClassName}`}>{heading}</h2>
       <div className="-mx-4 overflow-x-auto px-4 pb-2">
         <div className="flex w-max snap-x snap-mandatory gap-3">
           {results.map((result, index) => {
