@@ -113,6 +113,14 @@ export default async function AccountPage() {
       <RefreshTrackedButton lastRunningRun={lastRunningRun} lastAllRun={lastAllRun} />
 
       <Link
+        href="/account/rate"
+        className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+      >
+        <p className="text-sm font-bold uppercase tracking-wide">Rate Your Titles</p>
+        <span className="display text-lg">→</span>
+      </Link>
+
+      <Link
         href="/account/stats"
         className="card-bold mt-3 flex items-center justify-between gap-3 bg-acid p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
       >
