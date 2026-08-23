@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   applyVoteFloor,
+  buildRatingScale,
   excludeFranchiseSequels,
   excludeKnownTitles,
   FRANCHISE_MIN_TRACKED_TITLE_LENGTH,
+  MIN_RATINGS_FOR_SCALE,
   positionDecay,
+  RATING_DIVISOR,
+  RATING_NEUTRAL,
+  ratingToBaseWeight,
   RECENCY_FLOOR,
   RECENCY_UNKNOWN,
   scoreCandidates,
@@ -14,6 +19,7 @@ import {
   seedWeight,
   selectSeeds,
   type CandidateInput,
+  type RatingScale,
   type ScoredCandidate,
   type SeedInput,
 } from "@/lib/recommendations";
@@ -133,6 +139,116 @@ describe("seedWeight", () => {
     expect(favoriteDnf).toBeLessThan(0);
     expect(favoriteDnf).toBeLessThan(plainDnf);
   });
+
+  it("uses the absolute fallback formula when no scale is passed (existing two-arg call sites)", () => {
+    const weight = seedWeight(seed({ rating: 4.5 }), NOW);
+    expect(weight).toBeCloseTo(0.75, 5);
+  });
+
+  it("uses the absolute fallback formula when a scale is explicitly passed as null", () => {
+    const weight = seedWeight(seed({ rating: 4.5 }), NOW, null);
+    expect(weight).toBeCloseTo(0.75, 5);
+  });
+
+  it("leaves an unrated seed's STATUS_BASE_WEIGHT untouched by a scale", () => {
+    const scale = buildRatingScale(Array(MIN_RATINGS_FOR_SCALE).fill(4.0));
+    const withoutScale = seedWeight(seed({ status: "watching", rating: null }), NOW);
+    const withScale = seedWeight(seed({ status: "watching", rating: null }), NOW, scale);
+    expect(withScale).toBeCloseTo(withoutScale, 10);
+  });
+});
+
+// Skewed distribution modeled on the owner's real rating history: a dense
+// band of positive ratings (3.5-4.4) with a thin tail below 3.0 and above
+// 4.4. Shape (not exact values) matches what was used to validate the design.
+function realisticRatings(): number[] {
+  return [
+    ...Array(6).fill(2.5),
+    ...Array(10).fill(2.8),
+    ...Array(3).fill(3.2),
+    ...Array(2).fill(3.3),
+    ...Array(15).fill(3.5),
+    ...Array(35).fill(3.7),
+    ...Array(25).fill(3.9),
+    ...Array(20).fill(4.0),
+    ...Array(14).fill(4.2),
+    ...Array(5).fill(4.4),
+    ...Array(15).fill(4.5),
+    ...Array(6).fill(4.7),
+  ]; // n = 156
+}
+
+describe("buildRatingScale / ratingToBaseWeight", () => {
+  it("anchors 3.0 at ~0 while the top and bottom ratings approach +1/-1", () => {
+    const scale = buildRatingScale(realisticRatings());
+    expect(scale).not.toBeNull();
+
+    expect(ratingToBaseWeight(RATING_NEUTRAL, scale)).toBeCloseTo(0, 5);
+    expect(ratingToBaseWeight(4.7, scale)).toBeGreaterThan(0.9);
+    expect(ratingToBaseWeight(2.5, scale)).toBeLessThan(-0.7);
+  });
+
+  it("pushes a mid-band rating meaningfully higher than the old absolute formula would", () => {
+    const scale = buildRatingScale(realisticRatings());
+    const oldBase = (4.0 - RATING_NEUTRAL) / RATING_DIVISOR; // 0.5
+    const newBase = ratingToBaseWeight(4.0, scale);
+    expect(newBase).toBeGreaterThan(oldBase + 0.1);
+  });
+
+  it("gives two titles with the same rating an identical base weight (tie handling)", () => {
+    const scale = buildRatingScale(realisticRatings());
+    expect(ratingToBaseWeight(3.7, scale)).toBe(ratingToBaseWeight(3.7, scale));
+  });
+
+  it("is monotonically non-decreasing across a sweep of ratings", () => {
+    const scale = buildRatingScale(realisticRatings());
+    let prev = -Infinity;
+    for (let r = 0.5; r <= 5.0001; r += 0.1) {
+      const base = ratingToBaseWeight(Math.round(r * 10) / 10, scale);
+      expect(base).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = base;
+    }
+  });
+
+  it("falls back to the absolute formula below MIN_RATINGS_FOR_SCALE", () => {
+    const scale = buildRatingScale(Array(MIN_RATINGS_FOR_SCALE - 1).fill(4.0));
+    expect(scale).toBeNull();
+    expect(ratingToBaseWeight(4.0, scale)).toBeCloseTo(
+      (4.0 - RATING_NEUTRAL) / RATING_DIVISOR,
+      10,
+    );
+  });
+
+  it("guards p0 === 0 (every rating at/above neutral) instead of dividing by zero", () => {
+    const scale = buildRatingScale(Array(25).fill(4.0)) as RatingScale;
+    expect(scale.p0).toBe(0);
+    const base = ratingToBaseWeight(2.0, scale);
+    expect(Number.isNaN(base)).toBe(false);
+    expect(base).toBe(-1);
+  });
+
+  it("guards p0 === 1 (every rating below neutral) instead of dividing by zero", () => {
+    const scale = buildRatingScale(Array(25).fill(2.0)) as RatingScale;
+    expect(scale.p0).toBe(1);
+    const base = ratingToBaseWeight(4.0, scale);
+    expect(Number.isNaN(base)).toBe(false);
+    expect(base).toBe(1);
+  });
+
+  it("does not collapse every rated seed to the same weight when all ratings are identical", () => {
+    const scale = buildRatingScale(Array(25).fill(4.0));
+    const base = ratingToBaseWeight(4.0, scale);
+    expect(base).toBeCloseTo(0.5, 5);
+    expect(base).not.toBe(0);
+  });
+
+  it("computes a percentile for a rating value not present in the scale's population", () => {
+    const scale = buildRatingScale(realisticRatings());
+    const base = ratingToBaseWeight(3.85, scale);
+    expect(Number.isFinite(base)).toBe(true);
+    expect(base).toBeGreaterThan(ratingToBaseWeight(3.7, scale));
+    expect(base).toBeLessThan(ratingToBaseWeight(4.0, scale));
+  });
 });
 
 describe("completionFactor for movies", () => {
@@ -226,6 +342,44 @@ describe("selectSeeds", () => {
 
     expect(selected).toHaveLength(1);
     expect(selected[0].seed.titleId).toBe("only-movie");
+  });
+
+  it("derives the rating scale from the seeds it's handed and reorders low-rated seeds accordingly", () => {
+    // All completed with identical completion/recency/favorite factors, so
+    // weight differences here come only from the rating -> base mapping.
+    const population = realisticRatings().map((rating, i) =>
+      seed({ titleId: `pop-${i}`, mediaType: "tv", status: "completed", rating }),
+    );
+    // Swap in two specific, identifiable seeds carrying the ratings whose
+    // old-vs-new ranking flips (see buildRatingScale/ratingToBaseWeight
+    // tests): under the old absolute formula |2.8| < |3.5|, so a single-slot
+    // selection would keep 3.5 and drop 2.8. The percentile scale sharpens
+    // 2.8 (thin tail below neutral) and compresses 3.5 (bottom edge of the
+    // dense band), flipping that order.
+    population[0] = seed({ titleId: "low-2.8", mediaType: "tv", status: "completed", rating: 2.8 });
+    population[1] = seed({ titleId: "mid-3.5", mediaType: "tv", status: "completed", rating: 3.5 });
+
+    const selected = selectSeeds(population, NOW, { tv: population.length, anime: 0, movie: 0 });
+    const byId = new Map(selected.map((ws) => [ws.seed.titleId, ws.weight]));
+
+    const oldAbs28 = Math.abs((2.8 - RATING_NEUTRAL) / RATING_DIVISOR);
+    const oldAbs35 = Math.abs((3.5 - RATING_NEUTRAL) / RATING_DIVISOR);
+    expect(oldAbs28).toBeLessThan(oldAbs35); // sanity check on the premise
+
+    expect(Math.abs(byId.get("low-2.8")!)).toBeGreaterThan(Math.abs(byId.get("mid-3.5")!));
+  });
+
+  it("uses the absolute fallback for a population below MIN_RATINGS_FOR_SCALE", () => {
+    const fewRated = Array.from({ length: MIN_RATINGS_FOR_SCALE - 1 }, (_, i) =>
+      seed({ titleId: `few-${i}`, mediaType: "tv", status: "completed", rating: 4.0 }),
+    );
+
+    const selected = selectSeeds(fewRated, NOW, { tv: 1, anime: 0, movie: 0 });
+
+    expect(selected[0].weight).toBeCloseTo(
+      seedWeight(seed({ status: "completed", rating: 4.0 }), NOW),
+      10,
+    );
   });
 });
 
