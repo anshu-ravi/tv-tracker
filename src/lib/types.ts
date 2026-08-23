@@ -87,3 +87,18 @@ export interface SearchResult {
   posterUrl?: string | null;
   overview?: string | null;
 }
+
+// Stable lookup/React-list key for a title. `sourceId` alone is NOT unique:
+// TMDB assigns ids per provider namespace, so a `/tv` id and a `/movie` id
+// can collide numerically despite being unrelated works. `tv` and `anime`
+// share the `/tv` namespace and can even be the same underlying show
+// reclassified between the two (see classifyTmdbSearchResult in lib/tmdb.ts),
+// so they must map to the same key — only `movie` gets a distinct one.
+export function titleKey(
+  source: DataSource,
+  sourceId: string,
+  mediaType: MediaType,
+): string {
+  const namespace = mediaType === "movie" ? "movie" : "tv";
+  return `${source}:${namespace}:${sourceId}`;
+}
