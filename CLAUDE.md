@@ -117,21 +117,7 @@ from fresh `feat/*` branches off `main`.
 
 ## Working agreements
 
-- The user prefers reviewing before big changes and has delegated heavy prototyping to subagents in the past; confirm direction before large or outward-facing steps.
-- **Every feature ships through the git workflow.** Open a dedicated `feat/*`
-  branch off `main`, commit in small Conventional-Commit blocks, then merge it
-  back into `main` properly (via the **`git-workflow`** skill) once done. Don't
-  leave work stranded on long-lived branches or commit straight to `main`.
-- **The top-level session never writes the implementation itself.** All code
-  changes are carried out by **subagents running Sonnet 5**, given clear,
-  self-contained instructions. The orchestrating session's role is planning,
-  writing those instructions, reviewing the subagent's output, running
-  builds/verification, and driving git — not editing feature/source code
-  directly.
-  > **If you are a subagent reading this file: this rule does not apply to
-  > you.** You *are* the Sonnet 5 implementer it refers to. Write the code
-  > yourself with your own tools; do not delegate onward. (Subagents read
-  > `CLAUDE.md` too, and have repeatedly read the rule above as applying to
-  > themselves, spawning further agents and reporting "work is underway"
-  > while nothing reached disk.)
+- The user prefers reviewing before big changes; confirm direction before large or outward-facing steps.
+- **Delegation follows the global "Delegating implementation" rule** — triage before dispatching, brief the `implementer` agent properly, verify against disk rather than against its report. Nothing here overrides it. This project is where the failure modes behind that rule were learned; `HANDOFF.md` ("A trap that cost real time") has the history.
+- **Every feature ships through the git workflow.** Open a dedicated `feat/*` branch off `main`, commit in small Conventional-Commit blocks, then merge it back into `main` properly (via the **`git-workflow`** skill) once done. Don't leave work stranded on long-lived branches or commit straight to `main`.
 - Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`), and the live build status lives in `HANDOFF.md`.
