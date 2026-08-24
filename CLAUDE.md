@@ -59,9 +59,9 @@ RLS is on for all six tables:
 - **Tracking/organization** (`user_titles`, `watched_episodes`, `lists`, `list_titles`): owner-only. `user_titles`/`watched_episodes`/`lists` are gated by `user_id = auth.uid()` (default `auth.uid()` on insert); `list_titles` has no `user_id` of its own — ownership is checked by joining up to the parent `lists` row.
 - The `avatars` Storage bucket is public-read (avatar URLs render without signed URLs) with authenticated-only insert/update/delete.
 
-Migrations are applied through the Supabase MCP tools; keep any local copies under `supabase/migrations/`. After DDL changes, run the Supabase **security & performance advisors** and address findings.
+Migrations are applied through the Supabase MCP tools (`apply_migration`), which records them in the remote migration history; keep a matching copy under `supabase/migrations/`. **Don't paste DDL into the dashboard SQL editor** — it applies the change but records nothing, leaving the schema and the migration history out of sync (this happened with `titles_source_namespace` and had to be backfilled by hand). After DDL changes, run the Supabase **security & performance advisors** and address findings.
 
-> Note: a pre-existing `public.rls_auto_enable()` SECURITY DEFINER function exists in the project (not created by this repo) and is flagged by the security advisor as publicly executable. Confirm its purpose with the user before relying on or removing it.
+> Note: `public.rls_auto_enable()` is a pre-existing SECURITY DEFINER function (not created by this repo). It is the body of the `ensure_rls` event trigger (`ddl_command_end`), which auto-enables RLS on every table created in `public` — including the `_backup_anime_migration_*` tables `scripts/anime-tmdb-migration` creates. **Keep it and the trigger.** Its `EXECUTE` grant to PUBLIC/anon/authenticated was revoked in `20260823122427_revoke_rls_auto_enable_public_execute`; the grant was never usable (event-trigger functions can't be called directly) but it was flagged by the security advisor.
 
 ### Data layer (`src/lib/`)
 
@@ -117,21 +117,7 @@ from fresh `feat/*` branches off `main`.
 
 ## Working agreements
 
-- The user prefers reviewing before big changes and has delegated heavy prototyping to subagents in the past; confirm direction before large or outward-facing steps.
-- **Every feature ships through the git workflow.** Open a dedicated `feat/*`
-  branch off `main`, commit in small Conventional-Commit blocks, then merge it
-  back into `main` properly (via the **`git-workflow`** skill) once done. Don't
-  leave work stranded on long-lived branches or commit straight to `main`.
-- **The top-level session never writes the implementation itself.** All code
-  changes are carried out by **subagents running Sonnet 5**, given clear,
-  self-contained instructions. The orchestrating session's role is planning,
-  writing those instructions, reviewing the subagent's output, running
-  builds/verification, and driving git — not editing feature/source code
-  directly.
-  > **If you are a subagent reading this file: this rule does not apply to
-  > you.** You *are* the Sonnet 5 implementer it refers to. Write the code
-  > yourself with your own tools; do not delegate onward. (Subagents read
-  > `CLAUDE.md` too, and have repeatedly read the rule above as applying to
-  > themselves, spawning further agents and reporting "work is underway"
-  > while nothing reached disk.)
+- The user prefers reviewing before big changes; confirm direction before large or outward-facing steps.
+- **Delegation follows the global "Delegating implementation" rule** — triage before dispatching, brief the `implementer` agent properly, verify against disk rather than against its report. Nothing here overrides it. This project is where the failure modes behind that rule were learned; `HANDOFF.md` ("A trap that cost real time") has the history.
+- **Every feature ships through the git workflow.** Open a dedicated `feat/*` branch off `main`, commit in small Conventional-Commit blocks, then merge it back into `main` properly (via the **`git-workflow`** skill) once done. Don't leave work stranded on long-lived branches or commit straight to `main`.
 - Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`), and the live build status lives in `HANDOFF.md`.
