@@ -59,9 +59,9 @@ RLS is on for all six tables:
 - **Tracking/organization** (`user_titles`, `watched_episodes`, `lists`, `list_titles`): owner-only. `user_titles`/`watched_episodes`/`lists` are gated by `user_id = auth.uid()` (default `auth.uid()` on insert); `list_titles` has no `user_id` of its own — ownership is checked by joining up to the parent `lists` row.
 - The `avatars` Storage bucket is public-read (avatar URLs render without signed URLs) with authenticated-only insert/update/delete.
 
-Migrations are applied through the Supabase MCP tools; keep any local copies under `supabase/migrations/`. After DDL changes, run the Supabase **security & performance advisors** and address findings.
+Migrations are applied through the Supabase MCP tools (`apply_migration`), which records them in the remote migration history; keep a matching copy under `supabase/migrations/`. **Don't paste DDL into the dashboard SQL editor** — it applies the change but records nothing, leaving the schema and the migration history out of sync (this happened with `titles_source_namespace` and had to be backfilled by hand). After DDL changes, run the Supabase **security & performance advisors** and address findings.
 
-> Note: a pre-existing `public.rls_auto_enable()` SECURITY DEFINER function exists in the project (not created by this repo) and is flagged by the security advisor as publicly executable. Confirm its purpose with the user before relying on or removing it.
+> Note: `public.rls_auto_enable()` is a pre-existing SECURITY DEFINER function (not created by this repo). It is the body of the `ensure_rls` event trigger (`ddl_command_end`), which auto-enables RLS on every table created in `public` — including the `_backup_anime_migration_*` tables `scripts/anime-tmdb-migration` creates. **Keep it and the trigger.** Its `EXECUTE` grant to PUBLIC/anon/authenticated was revoked in `20260823122427_revoke_rls_auto_enable_public_execute`; the grant was never usable (event-trigger functions can't be called directly) but it was flagged by the security advisor.
 
 ### Data layer (`src/lib/`)
 
