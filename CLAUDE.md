@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**tv-tracker** — a personal, mobile-first PWA for one user to track TV shows and anime: what they're watching, a watchlist, completed, and DNF (dropped), with per-episode one-tap "mark watched" and next-episode air dates. Movies are deferred but the schema reserves room. See `context.md` for the full scoped spec, product decisions, and current build status.
+**tv-tracker** — a personal, mobile-first PWA for a household (two accounts today: the owner and his dad) to track TV shows and anime: what they're watching, a watchlist, completed, and DNF (dropped), with per-episode one-tap "mark watched" and next-episode air dates. Movies are deferred but the schema reserves room. See `context.md` for the full scoped spec, product decisions, and current build status.
 
 ## Commands
 
@@ -54,10 +54,12 @@ Enums: `media_type`, `watch_status`, `data_source`. An `updated_at` trigger (`se
 
 ### Row Level Security
 
-RLS is on for all six tables:
-- **Catalog** (`titles`, `episodes`): authenticated users can `select`; and — because this is a single-user app with no service-role secret on the server — authenticated users may also `insert`/`update` (so adding a show from search can populate the catalog). If this ever becomes multi-user, move catalog writes behind a service role and drop those write policies.
-- **Tracking/organization** (`user_titles`, `watched_episodes`, `lists`, `list_titles`): owner-only. `user_titles`/`watched_episodes`/`lists` are gated by `user_id = auth.uid()` (default `auth.uid()` on insert); `list_titles` has no `user_id` of its own — ownership is checked by joining up to the parent `lists` row.
-- The `avatars` Storage bucket is public-read (avatar URLs render without signed URLs) with authenticated-only insert/update/delete.
+RLS is on for every table in `public`:
+- **Catalog** (`titles`, `episodes`): shared across accounts — authenticated users can `select`; and, because there is no service-role secret on the server, they may also `insert`/`update` (so adding a show from search can populate the catalog). Sharing the catalog is deliberate: two accounts tracking the same show reuse one row and one cron refresh. The cost is that either account can overwrite catalog metadata the other sees. Acceptable for a trusted household; if this ever opens up beyond that, move catalog writes behind a service role and drop those write policies.
+- **Tracking/organization** (`user_titles`, `watched_episodes`, `lists`, `list_titles`, `recommendations`, `rec_dismissals`): owner-only — this is what keeps the two accounts' libraries, progress, and Explore rails separate. `user_titles`/`watched_episodes`/`lists` are gated by `user_id = auth.uid()` (default `auth.uid()` on insert); `list_titles` has no `user_id` of its own — ownership is checked by joining up to the parent `lists` row.
+- The `avatars` Storage bucket is public-read (avatar URLs render without signed URLs) with authenticated-only insert/update/delete. The write policies are bucket-wide rather than path-scoped, so any signed-in account could in principle write another's `${user.id}/avatar` object; the app only ever writes its own path. Path-scope the policies if that stops being acceptable.
+
+The Home/stats/watched-aggregate RPCs are `security invoker`, so RLS scopes their reads to the calling account; keep them that way — switching one to `security definer` would leak one account's history into the other's.
 
 Migrations are applied through the Supabase MCP tools (`apply_migration`), which records them in the remote migration history; keep a matching copy under `supabase/migrations/`. **Don't paste DDL into the dashboard SQL editor** — it applies the change but records nothing, leaving the schema and the migration history out of sync (this happened with `titles_source_namespace` and had to be backfilled by hand). After DDL changes, run the Supabase **security & performance advisors** and address findings.
 
@@ -101,10 +103,9 @@ explain it as you go; the user is learning it.
 
 ## Auth
 
-Single user, **email + password** via Supabase Auth. The proxy
-(`src/proxy.ts` — Next 16's renamed "middleware" convention) refreshes the
-session and redirects unauthenticated requests to `/login`. Supabase's default "Confirm email" may need to be turned
-off in the dashboard for a one-person app — Claude can't toggle it; ask the user.
+**Email + password** via Supabase Auth, one account per person. The proxy (`src/proxy.ts` — Next 16's renamed "middleware" convention) refreshes the session and redirects unauthenticated requests to `/login`.
+
+`/login` carries both **Sign in** and **Create account** against the same fields (`src/app/login/actions.ts`), so a new household member self-serves. If Supabase's "Confirm email" setting is ON, `signUp` succeeds but returns no session and the form redirects with a "check your email" message — either turn the setting off or create the user in the dashboard with auto-confirm. Claude can't toggle it; ask the user. Sign-up is open to anyone who reaches the page, so consider disabling new sign-ups in the dashboard once the intended accounts exist.
 
 ## Git & branching
 
