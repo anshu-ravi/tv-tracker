@@ -1,6 +1,10 @@
 # TV Tracker
 
 <p align="center">
+  <img src="docs/screenshots/hero.png" alt="TV Tracker on three phones: Upcoming, Home and a Bleach episode list" width="100%">
+</p>
+
+<p align="center">
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" alt="Next.js"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" alt="React"></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>
@@ -15,35 +19,62 @@ A personal, mobile-first PWA for tracking TV shows and anime — what's being wa
 
 Single user, single owner, no multi-tenant ambitions. Movies are deferred but the schema reserves room for them.
 
-## Screenshots
+## A tour of the app
+
+<img src="docs/screenshots/demo.gif" alt="Walkthrough: marking an episode watched and undoing it, the Upcoming tab, a title's episode list with filler tags, the library, Explore and stats" width="270" align="right">
+
+Tap, watch, repeat. The whole app is built around one question: *what do I watch next?*
+
+- **One tap marks an episode watched**, with a punchy "+1 EP" stamp and an undo toast in case you fat-fingered it.
+- **Shows file themselves.** Finish the last aired episode and a show moves to Completed. When a new season airs, it comes back to Watching on its own.
+- **Anime knows its filler.** Every episode of long-running shows like Bleach and Naruto is tagged canon, mixed or filler.
+- **Designed for your thumb.** A mobile-first PWA with a loud, neo-brutalist look: cream paper, heavy ink, acid green.
+
+<br clear="right">
+
+### Always know what's next
+
+Home leads with the next episode for everything you're watching. Upcoming lists air dates for every show you track, including the ones you've finished that have a new season on the way.
 
 <p align="center">
-  <img src="docs/screenshots/demo.gif" alt="Walkthrough: marking an episode watched with undo, the Upcoming tab, a title page with filler tags, the library, Explore and stats" width="300">
+  <img src="docs/screenshots/home.png" alt="Home: currently watching, with the next episode and a one-tap mark-watched button" width="300">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/upcoming.png" alt="Upcoming: air dates for tracked shows" width="300">
 </p>
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/home.jpg" alt="Home — currently watching" width="250"><br><sub><b>Home</b> — next episode and one-tap mark watched</sub></td>
-    <td align="center"><img src="docs/screenshots/upcoming.jpg" alt="Home — upcoming" width="250"><br><sub><b>Upcoming</b> — next air dates across everything tracked</sub></td>
-    <td align="center"><img src="docs/screenshots/title.jpg" alt="Title page" width="250"><br><sub><b>Title</b> — status, favorites, rating</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/episodes.jpg" alt="Episode list with filler tags" width="250"><br><sub><b>Episodes</b> — opens at the next unwatched, with canon/filler tags</sub></td>
-    <td align="center"><img src="docs/screenshots/library.jpg" alt="Library" width="250"><br><sub><b>Library</b> — TV, anime, movies, watchlist, lists</sub></td>
-    <td align="center"><img src="docs/screenshots/explore.jpg" alt="Explore" width="250"><br><sub><b>Explore</b> — search and recommendations</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/stats.jpg" alt="Stats" width="250"><br><sub><b>Stats</b> — watch time and top shows</sub></td>
-    <td></td>
-    <td></td>
-  </tr>
-</table>
+### Every episode, one tap away
+
+A title page holds its status, favorites and your rating. The episode list opens at your next unwatched episode, even 115 episodes into Bleach, and anime episodes carry their canon or filler tag.
+
+<p align="center">
+  <img src="docs/screenshots/title.png" alt="Title page for Bleach with status, rating and favorite controls" width="300">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/episodes.png" alt="Episode list opened at the next unwatched episode, with canon and mixed tags" width="300">
+</p>
+
+### Your library, and what to watch next
+
+Library splits TV, anime, movies, your watchlist and custom lists into poster grids by status. Explore searches TMDB and recommends shows based on what you've finished.
+
+<p align="center">
+  <img src="docs/screenshots/library.png" alt="Library: poster grid of TV shows being watched" width="300">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/explore.png" alt="Explore: search plus recommendation rails" width="300">
+</p>
+
+### Your watching, in numbers
+
+Episodes, hours and days watched, the TV/anime split, and the shows you've spent the most time with.
+
+<p align="center">
+  <img src="docs/screenshots/stats.png" alt="Stats: episodes, hours, days and top shows by time" width="300">
+</p>
 
 ---
 
 ## Table of contents
 
-- [Screenshots](#screenshots)
+- [A tour of the app](#a-tour-of-the-app)
 - [How it's built](#how-its-built)
 - [Architecture](#architecture)
 - [Data model](#data-model)
