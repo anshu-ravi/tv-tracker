@@ -15,10 +15,35 @@ A personal, mobile-first PWA for tracking TV shows and anime — what's being wa
 
 Single user, single owner, no multi-tenant ambitions. Movies are deferred but the schema reserves room for them.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="Walkthrough: marking an episode watched with undo, the Upcoming tab, a title page with filler tags, the library, Explore and stats" width="300">
+</p>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/home.jpg" alt="Home — currently watching" width="250"><br><sub><b>Home</b> — next episode and one-tap mark watched</sub></td>
+    <td align="center"><img src="docs/screenshots/upcoming.jpg" alt="Home — upcoming" width="250"><br><sub><b>Upcoming</b> — next air dates across everything tracked</sub></td>
+    <td align="center"><img src="docs/screenshots/title.jpg" alt="Title page" width="250"><br><sub><b>Title</b> — status, favorites, rating</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/episodes.jpg" alt="Episode list with filler tags" width="250"><br><sub><b>Episodes</b> — opens at the next unwatched, with canon/filler tags</sub></td>
+    <td align="center"><img src="docs/screenshots/library.jpg" alt="Library" width="250"><br><sub><b>Library</b> — TV, anime, movies, watchlist, lists</sub></td>
+    <td align="center"><img src="docs/screenshots/explore.jpg" alt="Explore" width="250"><br><sub><b>Explore</b> — search and recommendations</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/stats.jpg" alt="Stats" width="250"><br><sub><b>Stats</b> — watch time and top shows</sub></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
+
 ---
 
 ## Table of contents
 
+- [Screenshots](#screenshots)
 - [How it's built](#how-its-built)
 - [Architecture](#architecture)
 - [Data model](#data-model)
