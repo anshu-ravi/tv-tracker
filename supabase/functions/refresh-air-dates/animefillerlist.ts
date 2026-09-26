@@ -57,12 +57,17 @@ const TITLE_SLUG_OVERRIDES: Record<string, SlugRange[]> = {
     { slug: "bleach", offset: 0, maxAbsolute: 366 },
     { slug: "bleach-thousand-year-blood-war", offset: -366, minAbsolute: 367 },
   ],
+  // Index lists both the 1999 and 2011 series under "Hunter × Hunter"; ours is 2011.
+  "hunter x hunter": [{ slug: "hunter-x-hunter", offset: 0 }],
 };
 
 let indexCache: ShowIndexEntry[] | null = null;
 
 function normalize(title: string): string {
   return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/×/g, "x")
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
@@ -134,9 +139,15 @@ async function fetchShowIndex(): Promise<ShowIndexEntry[]> {
   return entries;
 }
 
+function stripParens(title: string): string {
+  return title.replace(/\([^)]*\)/g, " ");
+}
+
 function resolveSlug(title: string, entries: ShowIndexEntry[]): string | null {
   const target = normalize(title);
-  const exactMatch = entries.find((e) => normalize(e.name) === target);
+  const exactMatch = entries.find(
+    (e) => normalize(e.name) === target || normalize(stripParens(e.name)) === target,
+  );
   if (exactMatch) return exactMatch.slug;
 
   const targetNoSubtitle = normalize(stripSubtitle(title));
@@ -145,12 +156,15 @@ function resolveSlug(title: string, entries: ShowIndexEntry[]): string | null {
   );
   if (noSubtitleMatch) return noSubtitleMatch.slug;
 
-  const startsWithMatch = entries.find(
-    (e) => normalize(e.name).startsWith(target) || target.startsWith(normalize(e.name)),
-  );
-  if (startsWithMatch) return startsWithMatch.slug;
-
-  return null;
+  // Prefix match closest in length, so "Naruto" beats "Naruto Films".
+  const prefixMatches = entries
+    .map((e) => ({ slug: e.slug, name: normalize(stripParens(e.name)) }))
+    .filter((e) => e.name.length > 0 && (e.name.startsWith(target) || target.startsWith(e.name)))
+    .sort(
+      (a, b) =>
+        Math.abs(a.name.length - target.length) - Math.abs(b.name.length - target.length),
+    );
+  return prefixMatches[0]?.slug ?? null;
 }
 
 async function fetchSlugTable(slug: string): Promise<Map<number, EpisodeFiller>> {
