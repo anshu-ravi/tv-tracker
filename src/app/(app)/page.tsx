@@ -34,7 +34,7 @@ interface HomeWatchingRow {
   lastWatchedAt: string | null;
 }
 
-interface HomeUpcomingRow {
+export interface HomeUpcomingRow {
   titleId: string;
   title: string;
   mediaType: MediaType;
@@ -42,6 +42,10 @@ interface HomeUpcomingRow {
   firstAirDate: string | null;
   nextEpisodeAirDate: string | null;
   nextEpisodeLabel: string | null;
+  // Earliest future episode stored in the catalog — covers titles whose
+  // cron-refreshed next_episode_air_date is missing.
+  storedEpisodeAirDate: string | null;
+  storedEpisodeLabel: string | null;
 }
 
 interface HomePayload {
@@ -106,6 +110,31 @@ export function resolveAnimeNextEpisodeDisplay(
   };
 }
 
+// Picks the soonest not-yet-passed date among a title's candidates (cron's
+// next episode, earliest stored future episode, series premiere), or null
+// when none is upcoming.
+export function toUpcomingItem(row: HomeUpcomingRow, todayIso: string): UpcomingItem | null {
+  const candidates = [
+    { date: row.nextEpisodeAirDate, label: row.nextEpisodeLabel },
+    { date: row.storedEpisodeAirDate, label: row.storedEpisodeLabel },
+    { date: row.firstAirDate, label: null as string | null },
+  ].filter((c): c is { date: string; label: string | null } => !!c.date && c.date >= todayIso);
+
+  if (candidates.length === 0) return null;
+
+  const soonest = candidates.reduce((a, b) => (b.date < a.date ? b : a));
+
+  return {
+    titleId: row.titleId,
+    title: row.title,
+    posterUrl: row.posterUrl,
+    mediaType: row.mediaType,
+    airDate: soonest.date,
+    daysUntil: daysBetween(todayIso, soonest.date),
+    episodeLabel: soonest.label,
+  };
+}
+
 export default async function HomePage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -128,26 +157,7 @@ export default async function HomePage() {
 
   // ---- Upcoming dataset -------------------------------------------------
   const upcoming: UpcomingItem[] = payload.upcoming
-    .map((row): UpcomingItem | null => {
-      const candidates = [
-        { date: row.nextEpisodeAirDate, label: row.nextEpisodeLabel },
-        { date: row.firstAirDate, label: null as string | null },
-      ].filter((c): c is { date: string; label: string | null } => !!c.date && c.date >= today);
-
-      if (candidates.length === 0) return null;
-
-      const soonest = candidates.reduce((a, b) => (b.date < a.date ? b : a));
-
-      return {
-        titleId: row.titleId,
-        title: row.title,
-        posterUrl: row.posterUrl,
-        mediaType: row.mediaType,
-        airDate: soonest.date,
-        daysUntil: daysBetween(today, soonest.date),
-        episodeLabel: soonest.label,
-      };
-    })
+    .map((row) => toUpcomingItem(row, today))
     .filter((item): item is UpcomingItem => item !== null)
     .sort((a, b) => (a.airDate < b.airDate ? -1 : a.airDate > b.airDate ? 1 : 0));
 
