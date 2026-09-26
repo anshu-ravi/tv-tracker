@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/auth";
 import { ensureCatalogTitle } from "@/lib/api/catalog";
-import { markTitleWatched } from "@/lib/api/watched";
+import { fillCompletion } from "@/lib/api/watched";
 import type { DataSource, MediaType, WatchStatus } from "@/lib/types";
 
 const WATCH_STATUSES: WatchStatus[] = [
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (status === "completed") {
-    const { error: syncError } = await markTitleWatched(supabase, titleId);
+    const { error: syncError } = await fillCompletion(supabase, titleId);
     if (syncError) {
       console.error("Failed to sync watched episodes on add:", syncError);
     }

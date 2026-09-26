@@ -187,7 +187,7 @@ export default async function TitleDetailPage({
   // supabase/migrations/20260812090000_movies_synthetic_episode.sql) — it
   // carries the runtime for display, but it's not a "season" and has no
   // watch tick of its own (marking a movie "completed" auto-syncs that row
-  // via markTitleWatched, see api/titles/route.ts), so it's never grouped
+  // via fillCompletion, see api/titles/route.ts), so it's never grouped
   // into SeasonGroup/EpisodeSection below.
   const movieRuntime = isMovie ? episodes[0]?.runtime ?? null : null;
 
