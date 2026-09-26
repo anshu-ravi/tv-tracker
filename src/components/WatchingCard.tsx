@@ -306,13 +306,8 @@ export default function WatchingCard({
         <Link href={`/title/${data.titleId}`} className="block">
           <h3 className="display truncate text-lg">{data.title}</h3>
         </Link>
-        <ProgressBar
-          watched={displayedSeasonCount}
-          total={displayedTotalCount}
-          seasonLabel={seasonLabel}
-        />
         {caughtUp ? (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-soft">
+          <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-bold text-ink">
             <span>All caught up</span>
           </p>
         ) : (
@@ -321,11 +316,13 @@ export default function WatchingCard({
               type="button"
               aria-expanded={expanded}
               onClick={() => setExpanded((prev) => !prev)}
-              className="flex min-w-0 items-center gap-1.5 text-left text-xs font-semibold text-ink-soft"
+              className="flex min-w-0 items-center gap-1.5 text-left text-[13px] text-ink"
             >
               <span className="min-w-0 truncate">
-                Up next · {data.nextEpisodeCode}
-                {data.nextEpisodeName ? ` · ${data.nextEpisodeName}` : ""}
+                <span className="font-extrabold">{data.nextEpisodeCode}</span>
+                {data.nextEpisodeName ? (
+                  <span className="font-semibold"> · {data.nextEpisodeName}</span>
+                ) : null}
               </span>
               {data.nextEpisodeFillerType && <FillerTag type={data.nextEpisodeFillerType} />}
               <span
@@ -336,7 +333,7 @@ export default function WatchingCard({
               </span>
             </button>
             {expanded && (
-              <div className="mt-2 border-t-[3px] border-ink pt-2">
+              <div className="mt-1 border-t-[3px] border-ink pt-2">
                 <p className="text-xs leading-relaxed text-ink-soft">
                   {data.nextEpisodeOverview && data.nextEpisodeOverview.trim().length > 0
                     ? data.nextEpisodeOverview
@@ -346,6 +343,11 @@ export default function WatchingCard({
             )}
           </>
         )}
+        <ProgressBar
+          watched={displayedSeasonCount}
+          total={displayedTotalCount}
+          seasonLabel={seasonLabel}
+        />
       </div>
 
       <MarkButton

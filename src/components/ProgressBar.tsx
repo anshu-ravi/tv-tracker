@@ -20,7 +20,7 @@ export interface ProgressBarProps {
 }
 
 // Bold-styled thin horizontal progress track, matching the prototype:
-// a hairline (2px border, ~10px tall) bar with an ink fill that eases to
+// a hairline (2px border, ~8px tall) bar with an ink fill that eases to
 // its new width, and the "watched / total" label sitting to its LEFT.
 export default function ProgressBar({
   watched,
@@ -33,12 +33,12 @@ export default function ProgressBar({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="whitespace-nowrap text-[11.5px] font-extrabold text-ink">
+      <span className="whitespace-nowrap text-[11px] font-bold text-ink-soft">
         {hasTotal
           ? `${seasonLabel ? `${seasonLabel} · ` : ""}${watched} / ${total}`
           : `${watched} ep watched`}
       </span>
-      <div className="h-2.5 flex-1 overflow-hidden border-2 border-ink bg-panel">
+      <div className="h-2 flex-1 overflow-hidden border-2 border-ink bg-panel">
         <motion.div
           className="h-full bg-ink"
           initial={false}
