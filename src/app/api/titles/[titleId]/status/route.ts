@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/auth";
-import { markTitleWatched, unmarkTitleWatched } from "@/lib/api/watched";
+import { fillCompletion, releaseCompletion } from "@/lib/api/watched";
 import type { WatchStatus } from "@/lib/types";
 
 const WATCH_STATUSES: WatchStatus[] = [
@@ -116,12 +116,12 @@ export async function PATCH(
   // the status change above already succeeded, so a sync failure here is
   // logged and swallowed rather than failing the request.
   if (status === "completed") {
-    const { error: syncError } = await markTitleWatched(supabase, titleId);
+    const { error: syncError } = await fillCompletion(supabase, titleId);
     if (syncError) {
       console.error("Failed to mark episodes watched on completion:", syncError);
     }
   } else if (previousStatus === "completed") {
-    const { error: syncError } = await unmarkTitleWatched(supabase, titleId);
+    const { error: syncError } = await releaseCompletion(supabase, titleId);
     if (syncError) {
       console.error("Failed to unmark episodes on leaving completed:", syncError);
     }

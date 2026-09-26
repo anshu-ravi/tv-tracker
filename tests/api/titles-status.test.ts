@@ -75,7 +75,7 @@ describe("PATCH /api/titles/:titleId/status", () => {
     ]);
   });
 
-  it("marks all episodes watched when the new status is completed", async () => {
+  it("fills completion when the new status is completed", async () => {
     const fake = createFakeSupabase({
       user: { id: "user-1" },
       tableResults: {
@@ -83,11 +83,6 @@ describe("PATCH /api/titles/:titleId/status", () => {
           data: { title_id: "title-1", status: "watching" },
           error: null,
         },
-        episodes: {
-          data: [{ id: "ep-1" }, { id: "ep-2" }],
-          error: null,
-        },
-        watched_episodes: { data: null, error: null },
       },
     });
     mockCreateClient.mockResolvedValue(fake);
@@ -95,46 +90,33 @@ describe("PATCH /api/titles/:titleId/status", () => {
     const response = await callPatch("title-1", { status: "completed" });
 
     expect(response.status).toBe(200);
-
-    const watchedUpsert = fake.builders.watched_episodes[0].calls.find(
-      (c) => c.method === "upsert",
-    );
-    expect(watchedUpsert?.args[0]).toEqual([
-      { episode_id: "ep-1", title_id: "title-1", watched_at: null },
-      { episode_id: "ep-2", title_id: "title-1", watched_at: null },
+    expect(fake.rpcCalls).toEqual([
+      { method: "fill_completion", args: [{ p_title_id: "title-1" }] },
     ]);
-    expect(watchedUpsert?.args[1]).toEqual({
-      onConflict: "user_id,episode_id",
-      ignoreDuplicates: true,
-    });
   });
 
-  it("unmarks watched episodes when leaving completed", async () => {
+  it("releases the completion fill when leaving completed", async () => {
     // The pre-update lookup and the post-update read share the same
     // tableResults entry (the fake resolves per-table, not per-call), so
-    // configuring user_titles to report "completed" simulates the previous
-    // status and exercises the unmark path (title_id-scoped delete on
-    // watched_episodes) whenever the new status isn't completed.
-    const fakeWasCompleted = createFakeSupabase({
+    // reporting "completed" simulates the previous status.
+    const fake = createFakeSupabase({
       user: { id: "user-1" },
       tableResults: {
         user_titles: {
           data: { title_id: "title-1", status: "completed" },
           error: null,
         },
-        watched_episodes: { data: null, error: null },
       },
     });
-    mockCreateClient.mockResolvedValue(fakeWasCompleted);
+    mockCreateClient.mockResolvedValue(fake);
 
     const response = await callPatch("title-1", { status: "dnf" });
 
     expect(response.status).toBe(200);
-
-    const watchedBuilder = fakeWasCompleted.builders.watched_episodes[0];
-    expect(watchedBuilder.calls[0].method).toBe("delete");
-    const eqCalls = watchedBuilder.calls.filter((c) => c.method === "eq");
-    expect(eqCalls).toEqual([{ method: "eq", args: ["title_id", "title-1"] }]);
+    expect(fake.rpcCalls).toEqual([
+      { method: "release_completion", args: [{ p_title_id: "title-1" }] },
+    ]);
+    expect(fake.builders.watched_episodes).toBeUndefined();
   });
 
   it("rejects moving a movie to watching with 400, without touching user_titles", async () => {
