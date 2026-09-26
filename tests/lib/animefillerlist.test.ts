@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAnimeFillerData, parseEpisodeTable, parseShowIndex } from "@/lib/animefillerlist";
+import {
+  getAnimeFillerData,
+  parseEpisodeTable,
+  parseShowIndex,
+  resolveSlug,
+} from "@/lib/animefillerlist";
 
 describe("parseShowIndex", () => {
   it("parses show anchors into slug/name pairs", () => {
@@ -206,5 +211,35 @@ describe("getAnimeFillerData with a multi-page title override", () => {
     );
 
     await expect(getAnimeFillerData("Bleach")).resolves.toBeNull();
+  });
+});
+
+describe("resolveSlug", () => {
+  // Real animefillerlist.com index names for the shows that used to mismatch.
+  const entries = [
+    { slug: "naruto", name: "Naruto" },
+    { slug: "boruto-naruto-movie", name: "Naruto Films" },
+    { slug: "naruto-shippuden", name: "Naruto Shippuden" },
+    { slug: "hunter-x-hunter-2011-films", name: "Hunter x Hunter (2011) Films" },
+    { slug: "hunter-x-hunter-1999", name: "Hunter × Hunter" },
+    { slug: "hunter-x-hunter", name: "Hunter × Hunter (2011)" },
+    { slug: "my-hero-academia-movies", name: "My Hero Academia Films" },
+    { slug: "my-hero-academia", name: "My Hero Academia (Boku no Hero Academia)" },
+  ];
+
+  it("folds diacritics so Shippūden doesn't fall back to Naruto", () => {
+    expect(resolveSlug("Naruto Shippūden", entries)).toBe("naruto-shippuden");
+  });
+
+  it("matches a name with a parenthetical alias over a films page", () => {
+    expect(resolveSlug("My Hero Academia", entries)).toBe("my-hero-academia");
+  });
+
+  it("treats × as x", () => {
+    expect(resolveSlug("Hunter x Hunter", entries)).toBe("hunter-x-hunter-1999");
+  });
+
+  it("prefers the prefix match closest in length", () => {
+    expect(resolveSlug("Naruto Shippuden: Extra", entries)).toBe("naruto-shippuden");
   });
 });
