@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import EpisodeTick from "@/components/EpisodeTick";
 import SeasonControls from "@/components/SeasonControls";
@@ -70,6 +70,21 @@ export default function EpisodeSection({
 
   const activeSeason =
     seasons.find((s) => s.seasonNumber === selectedSeason) ?? seasons[0];
+
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Open each season's list at the first unwatched episode (one row of
+  // context above it). Only on season change, so ticking doesn't jump.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !activeSeason) return;
+    const next = activeSeason.episodes.find((ep) => !watched.has(ep.id));
+    const row = next
+      ? list.querySelector<HTMLElement>(`[data-episode-id="${next.id}"]`)
+      : null;
+    list.scrollTop = row ? Math.max(0, row.offsetTop - row.offsetHeight) : 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSeason?.seasonNumber]);
 
   async function toggleEpisode(episodeId: string) {
     if (pendingEpisodeIds.has(episodeId)) return;
@@ -189,7 +204,8 @@ export default function EpisodeSection({
       </div>
 
       <ul
-        className={`card-bold divide-y-[3px] divide-ink p-0 ${
+        ref={listRef}
+        className={`card-bold relative divide-y-[3px] divide-ink p-0 ${
           needsScroll ? "max-h-[26rem] overflow-y-auto" : ""
         }`}
       >
@@ -199,7 +215,7 @@ export default function EpisodeSection({
           const epLabel = `E${ep.episodeNumber}`;
           const isExpanded = expandedId === ep.id;
           return (
-            <li key={ep.id} className="px-3 py-2">
+            <li key={ep.id} data-episode-id={ep.id} className="px-3 py-2">
               <div className="flex items-center gap-3">
                 <EpisodeTick
                   watched={watched.has(ep.id)}
