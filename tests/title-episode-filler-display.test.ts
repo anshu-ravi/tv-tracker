@@ -8,8 +8,8 @@ import {
 // three-state read of stored columns (populated by the nightly refresh,
 // supabase/functions/refresh-air-dates/, from animefillerlist.com) — see the
 // migration that added episodes.filler_type/filler_name and
-// titles.filler_available/filler_checked_at for the full contract. HANDOFF.md
-// documents Fire Force S3, Dan Da Dan, and Bleach TYBW past ep 40 as
+// titles.filler_available/filler_checked_at for the full contract.
+// docs/build-logs/decisions.md records Fire Force S3, Dan Da Dan, and Bleach TYBW past ep 40 as
 // deliberately showing the dash (state 2 below), not "no tag" — pinning that
 // distinction here is the point of this test file.
 describe("resolveEpisodeFillerDisplay", () => {

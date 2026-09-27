@@ -9,7 +9,7 @@
 // existing titles.id instead of a provider triple, re-fetching from whatever
 // provider that title already came from. Used to backfill catalog rows that
 // were only partially populated (e.g. the one-time Trakt import only wrote
-// episodes the user had actually watched — see scripts/refresh-catalog/).
+// episodes the user had actually watched).
 import { getMovieTitle, getTvTitle } from "@/lib/tmdb";
 import type {
   DataSource,
@@ -226,9 +226,8 @@ interface TitleLookupRow {
 }
 
 // Re-fetches a title already in the catalog from its provider and re-runs
-// the upsert. Used both by POST /api/titles/refresh and the standalone
-// scripts/refresh-catalog/ tool to backfill titles the Trakt import only
-// partially populated (it only wrote episodes the user had watched, so
+// the upsert. Used by POST /api/titles/refresh to backfill titles the Trakt
+// import only partially populated (it only wrote episodes the user had watched, so
 // unwatched seasons/episodes — and sometimes whole seasons — are missing).
 export async function refreshCatalogTitle(
   supabase: SupabaseClient,
