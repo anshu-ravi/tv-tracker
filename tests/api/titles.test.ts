@@ -128,7 +128,7 @@ describe("POST /api/titles", () => {
 
   // Movies were unconditionally rejected as "unsupported" until this
   // branch — this used to be the same test as above (movie + tmdb posted
-  // as the 400 case) until HANDOFF.md flagged that test as having quietly
+  // as the 400 case) until a review flagged that test as having quietly
   // stopped testing anything once movies became a real, supported
   // combination. It now asserts the success path instead; the rejection
   // that still legitimately applies to movies (no "watching" bucket) has

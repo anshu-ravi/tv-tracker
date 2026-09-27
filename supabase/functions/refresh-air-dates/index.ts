@@ -5,8 +5,8 @@
 // every real season TMDB knows about (not just the one with the next airing
 // episode) so newly-announced seasons/episodes show up without a manual
 // refresh. TMDB is the source of truth for both tv and anime — anime was
-// fully migrated off AniList onto TMDB in session 3 (see CLAUDE.md /
-// HANDOFF.md), so this function is TMDB-only. This keeps the app's catalog
+// fully migrated off AniList onto TMDB in session 3 (see
+// CLAUDE.md), so this function is TMDB-only. This keeps the app's catalog
 // fresh without the browser ever calling TMDB directly (see CLAUDE.md "Hard
 // rules": provider calls are server-side only).
 //

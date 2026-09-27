@@ -118,7 +118,7 @@ const ANIMATION_GENRE_ID = 16;
 //
 // TMDB has no dedicated "anime" media type — everything animated-or-not is
 // just `tv`. As part of the AniList -> TMDB migration for anime (see
-// context.md / CLAUDE.md), search results are classified as anime using the
+// CLAUDE.md), search results are classified as anime using the
 // common working definition: Japanese-origin animation. A result counts as
 // anime when it BOTH (a) carries the Animation genre (id 16) and (b) is
 // Japanese-origin — `origin_country` includes "JP", or, for older/library

@@ -13,7 +13,7 @@
 // endpoint entirely) and, on some other id colliding with a real TV show,
 // could upsert bogus season/episode rows onto a movie's title_id. Keep this
 // check trivial and isolated given this function's history of destructive
-// bugs (see HANDOFF.md) — one obviously-correct boolean, tested directly.
+// bugs (see docs/build-logs/decisions.md) — one obviously-correct boolean, tested directly.
 export type SweepableMediaType = "tv" | "anime" | "movie";
 
 export function shouldSkipRefresh(mediaType: SweepableMediaType): boolean {

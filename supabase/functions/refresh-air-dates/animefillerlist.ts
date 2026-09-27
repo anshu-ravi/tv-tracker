@@ -20,8 +20,7 @@
 // during last night's run." Collapsing those together would let one
 // transient failure permanently downgrade a show like Fire Force or Dan Da
 // Dan from "has a page, some episodes just aren't classified yet" (the
-// quiet dash) to "no tag at all", which is exactly the regression HANDOFF.md
-// warns about. So:
+// quiet dash) to "no tag at all", which is exactly the regression to avoid. So:
 //   - fetchShowIndex() below THROWS on a network/empty-parse failure of the
 //     shared index page, instead of swallowing it. The caller (index.ts)
 //     catches that and leaves filler_available/filler_checked_at/episode

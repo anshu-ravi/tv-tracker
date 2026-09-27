@@ -4,7 +4,7 @@ Supabase Edge Function that refreshes `titles.next_episode_air_date` /
 `titles.next_episode_label` and does a full episode refresh (every real
 season, not just the one with the next airing episode) for titles the owner
 is tracking. Source of data: **TMDB only**. Anime was fully migrated off
-AniList onto TMDB in session 3 (see CLAUDE.md / HANDOFF.md); `media_type`
+AniList onto TMDB in session 3 (see CLAUDE.md); `media_type`
 stays `tv` vs `anime` in the row, but both are fetched from `/tv/{id}` and
 `/tv/{id}/season/{n}`, and anime rows get `absolute_number` recomputed so
 filler tags keep working.

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**tv-tracker** — a personal, mobile-first PWA for a household (two accounts today: the owner and his dad) to track TV shows and anime: what they're watching, a watchlist, completed, and DNF (dropped), with per-episode one-tap "mark watched" and next-episode air dates. Movies are deferred but the schema reserves room. See `context.md` for the full scoped spec, product decisions, and current build status.
+**tv-tracker** — a personal, mobile-first PWA for a household (two accounts today: the owner and his dad) to track TV shows, anime and movies: what they're watching, a watchlist, completed, and DNF (dropped), with per-episode one-tap "mark watched" and next-episode air dates. `docs/build-logs/decisions.md` records approaches that were tried and rejected, and why.
 
 ## Commands
 
@@ -24,8 +24,8 @@ npx vitest run -t "name fragment"       # single test by name
 - **Next.js 16** (App Router, `src/` dir, import alias `@/*`) + **React 19** + **TypeScript** + **Tailwind CSS v4** (CSS-first config via `@theme` in `src/app/globals.css`, not a `tailwind.config.js`).
 - **Framer Motion** for the mark-watched micro-interaction.
 - **Vitest** for tests (`vitest.config.mts`, Node environment, `tests/**/*.test.ts`).
-- **Supabase** (Postgres 17 + Auth + planned pg_cron) — project ref `ermhfiofisjsrniccqlv` ("Tv-Tracker", eu-west-1). Accessed from the app via `@supabase/ssr`.
-- **Data provider:** TMDB only, for both TV and anime — see Data layer below. AniList and Jikan (MyAnimeList) were tried for anime and retired; their clients are deleted from `src/lib/`.
+- **Supabase** (Postgres 17 + Auth + pg_cron + Edge Functions) — project ref `ermhfiofisjsrniccqlv` ("Tv-Tracker", eu-west-1). Accessed from the app via `@supabase/ssr`.
+- **Data provider:** TMDB only, for TV, anime and movies — see Data layer below. AniList and Jikan (MyAnimeList) were tried for anime and retired; their clients are deleted from `src/lib/`.
 - Deploy target: Vercel.
 
 > ⚠️ This is Next.js 16 — newer than most training data; APIs/conventions may differ. When unsure, read `node_modules/next/dist/docs/` before writing framework code. Notably: `cookies()` is async, and route/page `params` are Promises.
@@ -44,7 +44,7 @@ npx vitest run -t "name fragment"       # single test by name
 Two shared **catalog** tables + four per-user **tracking/organization** tables:
 
 - `titles` — one row per show/anime/movie. Keyed by `(source, source_id)` where `source ∈ {tmdb, anilist}` (the `anilist` enum value is retained for history but no title rows use it anymore — anime is fully TMDB-sourced, see below); `media_type ∈ {tv, anime, movie}`. Holds poster/backdrop, `is_running`, `total_episodes`, cron-refreshed `next_episode_air_date` / `next_episode_label`, and `tmdb_match_id` / `tmdb_match_strategy` / `tmdb_match_season` / `tmdb_match_checked_at` (leftover from the AniList→TMDB anime migration; strategy ∈ `whole`/`season`/`group`).
-- `episodes` — episodes per title, unique on `(title_id, season_number, episode_number)`. Anime now carry **real TMDB season/episode coordinates** (not season-1-only); `absolute_number` is still populated on every anime episode because `src/lib/animefillerlist.ts` keys filler-arc lookups on it.
+- `episodes` — episodes per title, unique on `(title_id, season_number, episode_number)`. A movie has exactly one episode row with null season/episode numbers (`episodes_movie_single_row`), so watched/progress/stats code treats movies like one-episode titles. Anime now carry **real TMDB season/episode coordinates** (not season-1-only); `absolute_number` is still populated on every anime episode because `src/lib/animefillerlist.ts` keys filler-arc lookups on it.
 - `user_titles` — the user's bucket for a title: `status ∈ {watchlist, watching, completed, dnf}`, unique `(user_id, title_id)`; `completed_at` is set by trigger on entering completed. pg_cron job `resume-new-episodes-nightly` (03:30 UTC, after the 03:00 air-date refresh) runs `resume_new_episodes()`, moving completed titles back to watching once an episode airs after `completed_at`.
 - `watched_episodes` — the one-tap marks; unique `(user_id, episode_id)`, with denormalized `title_id` for fast per-show progress counts. `watched_at` is nullable ("watched, but date unknown" for retrospective completes); per-episode/season marks still default to `now()`. `completion_fill` flags marks bulk-filled by marking a title completed (`fill_completion()`); `release_completion()` removes them on leaving completed only if nothing new has aired. Triggers on `watched_episodes` move a title `watching`→`completed` when `is_caught_up()` (all aired episodes watched, no season mid-air) and back on untick.
 - `lists` — user-created named collections, plus a single reserved `is_favorites=true` row per user (lazily created on first favorite) backing the Favorites feature.
@@ -63,11 +63,11 @@ The Home/stats/watched-aggregate RPCs are `security invoker`, so RLS scopes thei
 
 Migrations are applied through the Supabase MCP tools (`apply_migration`), which records them in the remote migration history; keep a matching copy under `supabase/migrations/`. **Don't paste DDL into the dashboard SQL editor** — it applies the change but records nothing, leaving the schema and the migration history out of sync (this happened with `titles_source_namespace` and had to be backfilled by hand). After DDL changes, run the Supabase **security & performance advisors** and address findings.
 
-> Note: `public.rls_auto_enable()` is a pre-existing SECURITY DEFINER function (not created by this repo). It is the body of the `ensure_rls` event trigger (`ddl_command_end`), which auto-enables RLS on every table created in `public` — including the `_backup_anime_migration_*` tables `scripts/anime-tmdb-migration` creates. **Keep it and the trigger.** Its `EXECUTE` grant to PUBLIC/anon/authenticated was revoked in `20260823122427_revoke_rls_auto_enable_public_execute`; the grant was never usable (event-trigger functions can't be called directly) but it was flagged by the security advisor.
+> Note: `public.rls_auto_enable()` is a pre-existing SECURITY DEFINER function (not created by this repo). It is the body of the `ensure_rls` event trigger (`ddl_command_end`), which auto-enables RLS on every table created in `public` — including the `_backup_anime_migration_*` tables the (now deleted) anime migration script created. **Keep it and the trigger.** Its `EXECUTE` grant to PUBLIC/anon/authenticated was revoked in `20260823122427_revoke_rls_auto_enable_public_execute`; the grant was never usable (event-trigger functions can't be called directly) but it was flagged by the security advisor.
 
 ### Data layer (`src/lib/`)
 
-- `lib/tmdb.ts` — TV **and anime** search + details/episodes from TMDB (bearer token auth); anime search is classified via the Animation genre + a Japanese-origin heuristic.
+- `lib/tmdb.ts` — TV, anime and movie search + details/episodes from TMDB (bearer token auth); anime search is classified via the Animation genre + a Japanese-origin heuristic.
 - `lib/tmdbAnimeMatch.ts` — matching helpers used to resolve/enrich anime titles against TMDB.
 - `lib/animefillerlist.ts` — scrapes animefillerlist.com to tag filler episodes, keyed on `absolute_number`.
 - `lib/ratings.ts` — IMDb + Rotten Tomatoes ratings via OMDb, fetched live for the title detail screen (not stored in the DB).
@@ -76,11 +76,11 @@ Migrations are applied through the Supabase MCP tools (`apply_migration`), which
 - `lib/supabase/{client,server,middleware}.ts` + `src/proxy.ts` — browser and cookie-based server clients via `@supabase/ssr`.
 - `lib/api/` — server-side helpers backing the route handlers (e.g. catalog refresh/upsert).
 
-AniList and Jikan (MyAnimeList) clients that used to live here were retired once anime moved fully to TMDB; they only remain inside one-off `scripts/*` migration/import tooling, not in the app's `src/lib/`.
+AniList and Jikan (MyAnimeList) clients were retired once anime moved fully to TMDB. The one-off migration and import scripts that used them have been deleted; they remain in git history.
 
 ### App surfaces
 
-Bottom-tab PWA with **4 icon tabs**: **Home** (currently-watching cards, split into Up Next / Catch Up, plus Upcoming and one-tap mark-watched) · **Library** (a route group over `/tv`, `/anime`, `/watchlist`, `/lists`, poster-cover grids split into the four status buckets, DNF muted, switched via a segmented sub-nav) · **Search** (query TMDB for TV and anime, add to a bucket) · **Account** (profile, sign out, and `/account/stats`).
+Bottom-tab PWA with **4 icon tabs**: **Home** (currently-watching cards, split into Up Next / Catch Up, plus Upcoming and one-tap mark-watched) · **Library** (a route group over `/tv`, `/anime`, `/movies`, `/watchlist`, `/lists`, poster-cover grids split into the four status buckets, DNF muted, switched via a segmented sub-nav) · **Explore** (`/explore`: TMDB search for TV, anime and movies, plus recommendation rails before you type; `/search` redirects here) · **Account** (profile, sign out, and `/account/stats`).
 
 ## Design language — "Bold"
 
@@ -89,7 +89,7 @@ Locked neo-brutalist direction (do not drift toward the rejected glass/cinematic
 ## Backend & future Python
 
 There is **no separate backend service**. The "backend" is Supabase (Postgres +
-Auth + RLS + planned cron) plus a thin layer of Next.js route handlers / server
+Auth + RLS + pg_cron) plus a thin layer of Next.js route handlers / server
 components in TypeScript. Keep that server surface small — let Postgres + RLS do
 the work rather than building a heavy API tier.
 
@@ -119,6 +119,6 @@ from fresh `feat/*` branches off `main`.
 ## Working agreements
 
 - The user prefers reviewing before big changes; confirm direction before large or outward-facing steps.
-- **Delegation follows the global "Delegating implementation" rule** — triage before dispatching, brief the `implementer` agent properly, verify against disk rather than against its report. Nothing here overrides it. This project is where the failure modes behind that rule were learned; `HANDOFF.md` ("A trap that cost real time") has the history.
+- **Delegation follows the global "Delegating implementation" rule** — triage before dispatching, brief the `implementer` agent properly, verify against disk rather than against its report. Nothing here overrides it. This project is where the failure modes behind that rule were learned; `docs/build-logs/decisions.md` ("Working with subagents") has the history.
 - **Every feature ships through the git workflow.** Open a dedicated `feat/*` branch off `main`, commit in small Conventional-Commit blocks, then merge it back into `main` properly (via the **`git-workflow`** skill) once done. Don't leave work stranded on long-lived branches or commit straight to `main`.
-- Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`), and the live build status lives in `HANDOFF.md`.
+- Persistent project context and decisions are also mirrored in Claude's memory (`project-spec`, `design-language`). Rejected approaches and closed issues live in `docs/build-logs/decisions.md`; check there before retrying something.
