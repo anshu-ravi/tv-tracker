@@ -5,6 +5,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import type { RankedTitle } from "@/lib/ratingsRank";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
+import { TIER_BG, tierFor } from "@/lib/ratingTiers";
 
 const EASE = [0.2, 0.9, 0.25, 1] as const;
 
@@ -73,7 +74,7 @@ export default function Podium({ titles, shame }: { titles: RankedTitle[]; shame
                         </div>
                       )}
                     </div>
-                    <span className="stamp absolute bottom-1.5 right-1.5 text-xs">{item.rating.toFixed(1)}★</span>
+                    <span className={`stamp absolute bottom-1.5 right-1.5 text-xs ${TIER_BG[tierFor(item.rating).key]}`}>{item.rating.toFixed(1)}★</span>
                   </div>
                 </Link>
               </motion.div>
