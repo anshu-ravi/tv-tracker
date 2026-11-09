@@ -3,6 +3,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Suspense } from "react";
 import WhereToWatch from "@/components/WhereToWatch";
+import MediaTypeToggle from "@/components/MediaTypeToggle";
 import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getTvCredits } from "@/lib/tmdb";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
@@ -302,6 +303,9 @@ export default async function TitleDetailPage({
               </span>
             ) : (
               <span>{title.is_running ? "Running" : "Ended"}</span>
+            )}
+            {title.media_type !== "movie" && title.source === "tmdb" && (
+              <MediaTypeToggle titleId={title.id} initial={title.media_type} />
             )}
           </p>
           <TitleActionBar
