@@ -257,16 +257,23 @@ export default async function TitleDetailPage({
       )}
 
       <div className="flex gap-4 px-4 pt-4">
-        <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
-          {title.poster_url ? (
-            <Image
-              src={title.poster_url}
-              alt={title.title}
-              fill
-              sizes="96px"
-              className="object-cover"
-            />
-          ) : null}
+        <div className="flex w-24 shrink-0 flex-col gap-2">
+          <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
+            {title.poster_url ? (
+              <Image
+                src={title.poster_url}
+                alt={title.title}
+                fill
+                sizes="96px"
+                className="object-cover"
+              />
+            ) : null}
+          </div>
+          {title.source === "tmdb" && (
+            <Suspense fallback={<div className="h-11 w-11 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
+              <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
+            </Suspense>
+          )}
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -304,11 +311,6 @@ export default async function TitleDetailPage({
             titleId={title.id}
             initialStatus={status ?? undefined}
           />
-          {title.source === "tmdb" && (
-            <Suspense fallback={<div className="h-[30px] w-32 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
-              <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
-            </Suspense>
-          )}
           <RatingBadges ratings={ratings} />
           {status && <UserRatingControl titleId={title.id} initialRating={rating} />}
           {nextAirLabel && (
