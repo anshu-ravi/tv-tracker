@@ -13,6 +13,9 @@
   --color-ink-soft: #4a443b;
   --color-acid: #c7ff3e;
   --color-dnf: #b8b0a0;
+  --color-gold: #ffd23f;
+  --color-silver: #cfd6df;
+  --color-bronze: #eb9a5e;
 
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-archivo-black), var(--font-archivo), sans-serif;
