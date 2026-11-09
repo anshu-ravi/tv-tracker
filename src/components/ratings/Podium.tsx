@@ -85,7 +85,10 @@ export default function Podium({ titles, shame }: { titles: RankedTitle[]; shame
               animate={{ scaleY: 1 }}
               transition={{ duration: 0.4, delay, ease: EASE }}
             >
-              <span className={`display leading-none ${isFirst ? "text-4xl" : "text-2xl"}`}>{label}</span>
+              <span className={`display leading-none ${isFirst ? "text-5xl" : "text-3xl"}`}>
+                {place}
+                <span className={`ml-0.5 align-super normal-case ${isFirst ? "text-lg" : "text-sm"}`}>{label.slice(1)}</span>
+              </span>
             </motion.div>
           </div>
         );
