@@ -7,6 +7,7 @@ import type {
   SearchResult,
   TitleCredits,
 } from "@/lib/types";
+import type { WatchProvider } from "@/lib/watchSettings";
 
 // TMDB client (TV shows/movies). Server-only — uses the API Read Access Token
 // (v4 bearer) from TMDB_API_KEY. Never import this into a Client Component.
@@ -883,4 +884,65 @@ export async function getEpisodeGroupEpisodes(groupId: string): Promise<TmdbEpis
     }
   }
   return out;
+}
+
+// ---- where to watch (TMDB's JustWatch-sourced provider data) -----------------
+
+interface TmdbProvider {
+  provider_id: number;
+  provider_name: string;
+  logo_path: string | null;
+  display_priority: number;
+  display_priorities?: Record<string, number>;
+}
+
+const DAY = 60 * 60 * 24;
+
+function toProvider(p: TmdbProvider): WatchProvider {
+  return { id: p.provider_id, name: p.provider_name, logoUrl: img(p.logo_path, "w92") };
+}
+
+export async function getWatchRegions(): Promise<{ code: string; name: string }[]> {
+  const data = await tmdb<{ results: { iso_3166_1: string; english_name: string }[] }>(
+    "/watch/providers/regions",
+    {},
+    { revalidate: 7 * DAY },
+  );
+  return data.results
+    .map((r) => ({ code: r.iso_3166_1, name: r.english_name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Every TV + movie streaming service TMDB knows for a country, most prominent first.
+export async function getRegionProviders(region: string): Promise<WatchProvider[]> {
+  const [tv, movie] = await Promise.all(
+    (["tv", "movie"] as const).map((kind) =>
+      tmdb<{ results: TmdbProvider[] }>(
+        `/watch/providers/${kind}`,
+        { watch_region: region },
+        { revalidate: DAY },
+      ),
+    ),
+  );
+  const byId = new Map<number, TmdbProvider>();
+  for (const p of [...tv.results, ...movie.results]) byId.set(p.provider_id, p);
+  const priority = (p: TmdbProvider) => p.display_priorities?.[region] ?? p.display_priority;
+  return [...byId.values()].sort((a, b) => priority(a) - priority(b)).map(toProvider);
+}
+
+// Subscription ("flatrate") services carrying a title in a country.
+export async function getTitleStreamingProviders(
+  id: string,
+  mediaType: MediaType,
+  region: string,
+): Promise<WatchProvider[]> {
+  const kind = mediaType === "movie" ? "movie" : "tv";
+  const data = await tmdb<{ results: Record<string, { flatrate?: TmdbProvider[] }> }>(
+    `/${kind}/${id}/watch/providers`,
+    {},
+    { revalidate: DAY / 4 },
+  );
+  return (data.results[region]?.flatrate ?? [])
+    .sort((a, b) => a.display_priority - b.display_priority)
+    .map(toProvider);
 }
