@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
+import WhereToWatch from "@/components/WhereToWatch";
+import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getTvCredits } from "@/lib/tmdb";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
@@ -104,6 +107,8 @@ export default async function TitleDetailPage({
 }) {
   const { titleId } = await params;
   const supabase = await createClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const watchSettings = parseWatchSettings(claimsData?.claims?.user_metadata);
 
   const { data: titleData, error: titleError } = await supabase
     .from("titles")
@@ -252,16 +257,23 @@ export default async function TitleDetailPage({
       )}
 
       <div className="flex gap-4 px-4 pt-4">
-        <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
-          {title.poster_url ? (
-            <Image
-              src={title.poster_url}
-              alt={title.title}
-              fill
-              sizes="96px"
-              className="object-cover"
-            />
-          ) : null}
+        <div className="flex w-24 shrink-0 flex-col gap-2">
+          <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
+            {title.poster_url ? (
+              <Image
+                src={title.poster_url}
+                alt={title.title}
+                fill
+                sizes="96px"
+                className="object-cover"
+              />
+            ) : null}
+          </div>
+          {title.source === "tmdb" && (
+            <Suspense fallback={<div className="h-11 w-11 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
+              <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
+            </Suspense>
+          )}
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">

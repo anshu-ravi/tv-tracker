@@ -1,6 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
+import WhereToWatch from "@/components/WhereToWatch";
+import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getMovieTitle, getTvCredits, getTvTitle } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
@@ -69,6 +72,8 @@ export default async function PreviewPage({
   // fully working read-only preview from TMDB either way, so failing the
   // whole page over this optimization would make things worse, not better.
   const supabase = await createClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const watchSettings = parseWatchSettings(claimsData?.claims?.user_metadata);
   const { data: existingTitle, error: existingTitleError } = await supabase
     .from("titles")
     .select("id")
@@ -197,18 +202,23 @@ export default async function PreviewPage({
       )}
 
       <div className="flex gap-4 px-4 pt-4">
-        <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
-          {title.posterUrl ? (
-            <Image
-              // 96px box -> 192 (2x) for retina.
-              src={buildTmdbImageUrl(title.posterUrl, 192)}
-              alt={title.title}
-              fill
-              sizes="96px"
-              className="object-cover"
-              unoptimized
-            />
-          ) : null}
+        <div className="flex w-24 shrink-0 flex-col gap-2">
+          <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
+            {title.posterUrl ? (
+              <Image
+                // 96px box -> 192 (2x) for retina.
+                src={buildTmdbImageUrl(title.posterUrl, 192)}
+                alt={title.title}
+                fill
+                sizes="96px"
+                className="object-cover"
+                unoptimized
+              />
+            ) : null}
+          </div>
+          <Suspense fallback={<div className="h-11 w-11 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
+            <WhereToWatch sourceId={sourceId} mediaType={mediaType} settings={watchSettings} />
+          </Suspense>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -220,8 +230,7 @@ export default async function PreviewPage({
                   .join(" · ")
               : [year, title.isRunning ? "Running" : "Ended"].filter(Boolean).join(" · ")}
           </p>
-          <TitleActionBar source={dataSource} sourceId={sourceId} mediaType={mediaType} />
-          <RatingBadges ratings={ratings} />
+          <TitleActionBar source={dataSource} sourceId={sourceId} mediaType={mediaType} />          <RatingBadges ratings={ratings} />
         </div>
       </div>
 
