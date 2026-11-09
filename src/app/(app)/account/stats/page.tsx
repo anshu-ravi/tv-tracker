@@ -18,7 +18,7 @@ export default async function StatsPage() {
   return (
     <div className="mx-auto max-w-md px-4 py-6">
       <div className="flex items-center gap-2">
-        <BackButton />
+        <BackButton fallbackHref="/account" />
       </div>
 
       <h1 className="display mb-4 mt-4 text-3xl">Your Stats</h1>

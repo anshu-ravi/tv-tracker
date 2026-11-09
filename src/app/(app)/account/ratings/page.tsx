@@ -9,7 +9,7 @@ export default async function RatingsPage() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-6">
-      <BackButton />
+      <BackButton fallbackHref="/account" />
       <h1 className="display mb-4 mt-4 text-3xl">Your Ratings</h1>
       <RatingsView titles={titles} />
     </div>
