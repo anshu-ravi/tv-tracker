@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Podium from "@/components/ratings/Podium";
 import RankedCarousel from "@/components/ratings/RankedCarousel";
 import { rankRatings, type RatedTitle, type RatingFilter, type RatingSort } from "@/lib/ratingsRank";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
@@ -15,16 +16,19 @@ const FILTERS: { value: RatingFilter; label: string }[] = [
 ];
 
 const MEDIA_LABEL = { tv: "TV", anime: "Anime", movie: "Movie" } as const;
-const CAROUSEL_SIZE = 10;
+const PODIUM_SIZE = 3;
+const TOP_SIZE = 10;
 
-// Filter chips + sort toggle over a Top/Bottom 10 carousel and the full ranked list.
+// Filter chips + sort toggle over a top-3 podium, a carousel for 4–10, and the ranked list.
 export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
   const [filter, setFilter] = useState<RatingFilter>("all");
   const [sort, setSort] = useState<RatingSort>("desc");
 
   const ranked = rankRatings(titles, filter, sort);
-  const carousel = ranked.slice(0, CAROUSEL_SIZE);
-  const rest = ranked.slice(CAROUSEL_SIZE);
+  const podium = ranked.slice(0, PODIUM_SIZE);
+  const carousel = ranked.slice(PODIUM_SIZE, TOP_SIZE);
+  const rest = ranked.slice(TOP_SIZE);
+  const shame = sort === "asc";
 
   return (
     <div className="space-y-5">
@@ -66,10 +70,15 @@ export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
         <>
           <section>
             <div className="mb-3 flex items-baseline gap-2">
-              <h2 className="display text-xl">{sort === "desc" ? "Top" : "Bottom"} {CAROUSEL_SIZE}</h2>
+              <h2 className="display text-xl">{shame ? "Hall of Shame" : `Top ${TOP_SIZE}`}</h2>
               <span className="stamp text-[10px]">{ranked.length} rated</span>
             </div>
-            <RankedCarousel titles={carousel} />
+            <Podium key={`${filter}-${sort}`} titles={podium} shame={shame} />
+            {carousel.length > 0 && (
+              <div className="mt-5">
+                <RankedCarousel titles={carousel} compact />
+              </div>
+            )}
           </section>
 
           {rest.length > 0 && (

@@ -4,7 +4,7 @@ import type { RankedTitle } from "@/lib/ratingsRank";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
 // Swipeable row of big poster cards, each with its rank and a rating stamp.
-export default function RankedCarousel({ titles }: { titles: RankedTitle[] }) {
+export default function RankedCarousel({ titles, compact = false }: { titles: RankedTitle[]; compact?: boolean }) {
   return (
     <div
       className="no-scrollbar -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 pt-1"
@@ -14,7 +14,7 @@ export default function RankedCarousel({ titles }: { titles: RankedTitle[] }) {
         <Link
           key={item.titleId}
           href={`/title/${item.titleId}`}
-          className="w-[42vw] max-w-[168px] shrink-0 snap-start transition-transform active:translate-x-[2px] active:translate-y-[2px]"
+          className={`${compact ? "w-[30vw] max-w-[118px]" : "w-[42vw] max-w-[168px]"} shrink-0 snap-start transition-transform active:translate-x-[2px] active:translate-y-[2px]`}
         >
           <div className="card-bold relative overflow-hidden p-0">
             <div className="relative aspect-[2/3] w-full bg-panel">
@@ -25,7 +25,7 @@ export default function RankedCarousel({ titles }: { titles: RankedTitle[] }) {
                   fill
                   sizes="168px"
                   className="object-cover"
-                  priority={i < 2}
+                  priority={!compact && i < 2}
                   unoptimized
                 />
               ) : (
@@ -34,10 +34,10 @@ export default function RankedCarousel({ titles }: { titles: RankedTitle[] }) {
                 </div>
               )}
             </div>
-            <span className="display absolute left-0 top-0 border-b-[3px] border-r-[3px] border-ink bg-ink px-2 py-1 text-2xl text-paper">
+            <span className={`display absolute left-0 top-0 border-b-[3px] border-r-[3px] border-ink bg-ink px-2 py-1 text-paper ${compact ? "text-lg" : "text-2xl"}`}>
               #{item.rank}
             </span>
-            <span className="stamp absolute bottom-2 right-2 text-base">{item.rating.toFixed(1)}★</span>
+            <span className={`stamp absolute bottom-2 right-2 ${compact ? "text-xs" : "text-base"}`}>{item.rating.toFixed(1)}★</span>
           </div>
           <p className="mt-2 truncate text-[11px] font-bold uppercase tracking-wide">{item.title}</p>
         </Link>
