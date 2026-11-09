@@ -7,7 +7,7 @@ import Podium from "@/components/ratings/Podium";
 import RankedCarousel from "@/components/ratings/RankedCarousel";
 import { rankRatings, type RatedTitle, type RatingFilter, type RatingSort } from "@/lib/ratingsRank";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
-import { TIER_BG, groupByTier } from "@/lib/ratingTiers";
+import { TIER_BG, groupByTier, type TierKey } from "@/lib/ratingTiers";
 
 const FILTERS: { value: RatingFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -24,6 +24,16 @@ const TOP_SIZE = 10;
 export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
   const [filter, setFilter] = useState<RatingFilter>("all");
   const [sort, setSort] = useState<RatingSort>("desc");
+  const [collapsed, setCollapsed] = useState<Set<TierKey>>(() => new Set());
+
+  function toggleTier(key: TierKey) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const ranked = rankRatings(titles, filter, sort);
   const podium = ranked.slice(0, PODIUM_SIZE);
@@ -88,45 +98,56 @@ export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
               {groupByTier(rest).map((group) => (
                 <div key={`${group.tier.key}-${group.items[0].titleId}`} className="mt-3">
                   <div className="sticky top-[50px] z-20 -mx-4 bg-paper px-4 py-1.5">
-                    <div
-                      className={`hard-shadow-sm flex items-center justify-between border-[3px] border-ink px-3 py-1.5 ${TIER_BG[group.tier.key]}`}
+                    <button
+                      type="button"
+                      onClick={() => toggleTier(group.tier.key)}
+                      aria-expanded={!collapsed.has(group.tier.key)}
+                      className={`hard-shadow-sm flex w-full items-center justify-between gap-2 border-[3px] border-ink px-3 py-1.5 text-left transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${TIER_BG[group.tier.key]}`}
                     >
                       <span className="display text-base">{group.tier.label}</span>
-                      <span className="text-[10px] font-bold uppercase tracking-wide">
+                      <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide">
                         {group.tier.range}★ · {group.items.length}
+                        <span
+                          aria-hidden
+                          className={`display text-sm transition-transform ${collapsed.has(group.tier.key) ? "-rotate-90" : ""}`}
+                        >
+                          ▾
+                        </span>
                       </span>
-                    </div>
+                    </button>
                   </div>
-                  <ol className="card-bold mt-1.5 divide-y-2 divide-ink/15 px-3">
-                    {group.items.map((item) => (
-                      <li key={item.titleId}>
-                        <Link href={`/title/${item.titleId}`} className="flex items-center gap-3 py-2.5">
-                          <span className="display w-8 shrink-0 text-right text-lg text-ink-soft">{item.rank}</span>
-                          <div className="relative h-[84px] w-14 shrink-0 overflow-hidden border-2 border-ink bg-panel hard-shadow-sm">
-                            {item.posterUrl && (
-                              <Image
-                                src={buildTmdbImageUrl(item.posterUrl, 154)}
-                                alt=""
-                                fill
-                                sizes="56px"
-                                className="object-cover"
-                                unoptimized
-                              />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="line-clamp-2 text-sm font-bold uppercase leading-tight tracking-wide">{item.title}</p>
-                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-ink-soft">
-                              {MEDIA_LABEL[item.mediaType]}
-                            </p>
-                          </div>
-                          <span className={`stamp shrink-0 text-xs ${TIER_BG[group.tier.key]}`}>
-                            {item.rating.toFixed(1)}★
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ol>
+                  {!collapsed.has(group.tier.key) && (
+                    <ol className="card-bold mt-1.5 divide-y-2 divide-ink/15 px-3">
+                      {group.items.map((item) => (
+                        <li key={item.titleId}>
+                          <Link href={`/title/${item.titleId}`} className="flex items-center gap-3 py-2.5">
+                            <span className="display w-8 shrink-0 text-right text-lg text-ink-soft">{item.rank}</span>
+                            <div className="relative h-[84px] w-14 shrink-0 overflow-hidden border-2 border-ink bg-panel hard-shadow-sm">
+                              {item.posterUrl && (
+                                <Image
+                                  src={buildTmdbImageUrl(item.posterUrl, 154)}
+                                  alt=""
+                                  fill
+                                  sizes="56px"
+                                  className="object-cover"
+                                  unoptimized
+                                />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="line-clamp-2 text-sm font-bold uppercase leading-tight tracking-wide">{item.title}</p>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-ink-soft">
+                                {MEDIA_LABEL[item.mediaType]}
+                              </p>
+                            </div>
+                            <span className={`stamp shrink-0 text-xs ${TIER_BG[group.tier.key]}`}>
+                              {item.rating.toFixed(1)}★
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </div>
               ))}
             </section>
