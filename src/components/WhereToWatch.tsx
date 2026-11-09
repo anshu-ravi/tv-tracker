@@ -55,7 +55,7 @@ export default async function WhereToWatch({
     return (
       <div className="flex flex-col gap-1.5">
         <p className={note}>Not on yours</p>
-        <Logos providers={others} size={26} />
+        <Logos providers={others} size={44} />
       </div>
     );
   }
