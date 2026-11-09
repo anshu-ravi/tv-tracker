@@ -28,7 +28,7 @@ export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-stretch gap-2">
+      <div className="sticky top-0 z-10 -mx-4 flex items-stretch gap-2 bg-paper px-4 pb-2 pt-2">
         <ul className="hard-shadow-sm flex min-w-0 flex-1 overflow-hidden rounded-[10px] border-[3px] border-ink">
           {FILTERS.map((f) => (
             <li key={f.value} className="min-w-0 flex-1">

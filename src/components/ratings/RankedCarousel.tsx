@@ -7,7 +7,7 @@ import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 export default function RankedCarousel({ titles }: { titles: RankedTitle[] }) {
   return (
     <div
-      className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 pt-1"
+      className="no-scrollbar -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 pt-1"
       style={{ WebkitOverflowScrolling: "touch" }}
     >
       {titles.map((item, i) => (
