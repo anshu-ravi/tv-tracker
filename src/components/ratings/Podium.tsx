@@ -10,9 +10,9 @@ const EASE = [0.2, 0.9, 0.25, 1] as const;
 
 // Olympic order: 2nd left, 1st centre, 3rd right. Steps rise 3 → 2 → 1.
 const SLOTS = [
-  { place: 2, label: "2nd", height: 100, delay: 0.15, edge: "border-r-0" },
-  { place: 1, label: "1st", height: 132, delay: 0.3, edge: "" },
-  { place: 3, label: "3rd", height: 76, delay: 0, edge: "border-l-0" },
+  { place: 2, label: "2nd", height: 88, delay: 0.15, edge: "border-r-0" },
+  { place: 1, label: "1st", height: 116, delay: 0.3, edge: "" },
+  { place: 3, label: "3rd", height: 64, delay: 0, edge: "border-l-0" },
 ] as const;
 
 const PODIUM_COLORS = {
@@ -87,11 +87,6 @@ export default function Podium({ titles, shame }: { titles: RankedTitle[]; shame
             >
               <span className={`display leading-none ${isFirst ? "text-5xl" : "text-3xl"}`}>{place}</span>
               <span className="mt-0.5 text-[9px] font-bold uppercase tracking-widest opacity-80">{label}</span>
-              {item && (
-                <span className="mt-1 w-full truncate text-center text-[9px] font-bold uppercase tracking-wide">
-                  {item.title}
-                </span>
-              )}
             </motion.div>
           </div>
         );

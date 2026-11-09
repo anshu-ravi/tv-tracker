@@ -32,7 +32,7 @@ export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
 
   return (
     <div className="space-y-5">
-      <div className="sticky top-0 z-10 -mx-4 flex items-stretch gap-2 bg-paper px-4 pb-2 pt-2">
+      <div className="sticky top-0 z-30 -mx-4 flex items-stretch gap-2 bg-paper px-4 pb-2 pt-2">
         <ul className="hard-shadow-sm flex min-w-0 flex-1 overflow-hidden rounded-[10px] border-[3px] border-ink">
           {FILTERS.map((f) => (
             <li key={f.value} className="min-w-0 flex-1">
@@ -84,30 +84,30 @@ export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
           {rest.length > 0 && (
             <section className="card-bold p-4">
               <h2 className="text-xs font-bold uppercase tracking-wide text-ink-soft">The Rest</h2>
-              <ol className="mt-3 space-y-2.5">
+              <ol className="mt-3 divide-y-2 divide-ink/15">
                 {rest.map((item) => (
                   <li key={item.titleId}>
-                    <Link href={`/title/${item.titleId}`} className="flex items-center gap-2">
-                      <span className="w-7 shrink-0 text-right text-[11px] font-bold text-ink-soft">{item.rank}</span>
-                      <div className="relative h-12 w-8 shrink-0 overflow-hidden border-2 border-ink bg-panel">
+                    <Link href={`/title/${item.titleId}`} className="flex items-center gap-3 py-2.5">
+                      <span className="display w-8 shrink-0 text-right text-lg text-ink-soft">{item.rank}</span>
+                      <div className="relative h-[84px] w-14 shrink-0 overflow-hidden border-2 border-ink bg-panel hard-shadow-sm">
                         {item.posterUrl && (
                           <Image
-                            src={buildTmdbImageUrl(item.posterUrl, 92)}
+                            src={buildTmdbImageUrl(item.posterUrl, 154)}
                             alt=""
                             fill
-                            sizes="32px"
+                            sizes="56px"
                             className="object-cover"
                             unoptimized
                           />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[11px] font-bold uppercase tracking-wide">{item.title}</p>
-                        <p className="text-[9px] font-bold uppercase tracking-wide text-ink-soft">
+                        <p className="line-clamp-2 text-sm font-bold uppercase leading-tight tracking-wide">{item.title}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-ink-soft">
                           {MEDIA_LABEL[item.mediaType]}
                         </p>
                       </div>
-                      <span className="shrink-0 text-xs font-bold">{item.rating.toFixed(1)}★</span>
+                      <span className="stamp shrink-0 text-xs">{item.rating.toFixed(1)}★</span>
                     </Link>
                   </li>
                 ))}
