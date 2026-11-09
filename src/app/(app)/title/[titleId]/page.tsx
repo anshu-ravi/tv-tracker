@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
+import WhereToWatch from "@/components/WhereToWatch";
+import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getTvCredits } from "@/lib/tmdb";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
 import BackButton from "@/components/BackButton";
@@ -104,6 +107,8 @@ export default async function TitleDetailPage({
 }) {
   const { titleId } = await params;
   const supabase = await createClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const watchSettings = parseWatchSettings(claimsData?.claims?.user_metadata);
 
   const { data: titleData, error: titleError } = await supabase
     .from("titles")
@@ -349,6 +354,14 @@ export default async function TitleDetailPage({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {title.source === "tmdb" && (
+        <div className="mt-6 px-4">
+          <Suspense fallback={<div className="h-[104px] animate-pulse border-[3px] border-ink bg-panel" />}>
+            <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
+          </Suspense>
         </div>
       )}
 

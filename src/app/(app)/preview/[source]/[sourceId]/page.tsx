@@ -1,6 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
+import WhereToWatch from "@/components/WhereToWatch";
+import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getMovieTitle, getTvCredits, getTvTitle } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
@@ -69,6 +72,8 @@ export default async function PreviewPage({
   // fully working read-only preview from TMDB either way, so failing the
   // whole page over this optimization would make things worse, not better.
   const supabase = await createClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const watchSettings = parseWatchSettings(claimsData?.claims?.user_metadata);
   const { data: existingTitle, error: existingTitleError } = await supabase
     .from("titles")
     .select("id")
@@ -262,6 +267,12 @@ export default async function PreviewPage({
           ))}
         </div>
       )}
+
+      <div className="mt-6 px-4">
+        <Suspense fallback={<div className="h-[104px] animate-pulse border-[3px] border-ink bg-panel" />}>
+          <WhereToWatch sourceId={sourceId} mediaType={mediaType} settings={watchSettings} />
+        </Suspense>
+      </div>
 
       {mediaType !== "movie" && (
         <div className="mt-6 px-4">
