@@ -7,6 +7,7 @@ import Podium from "@/components/ratings/Podium";
 import RankedCarousel from "@/components/ratings/RankedCarousel";
 import { rankRatings, type RatedTitle, type RatingFilter, type RatingSort } from "@/lib/ratingsRank";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
+import { TIER_BG, groupByTier } from "@/lib/ratingTiers";
 
 const FILTERS: { value: RatingFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -19,7 +20,7 @@ const MEDIA_LABEL = { tv: "TV", anime: "Anime", movie: "Movie" } as const;
 const PODIUM_SIZE = 3;
 const TOP_SIZE = 10;
 
-// Filter chips + sort toggle over a top-3 podium, a carousel for 4–10, and the ranked list.
+// Filter chips + sort toggle over a top-3 podium, a carousel for 4–10, and the rest grouped by rating tier.
 export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
   const [filter, setFilter] = useState<RatingFilter>("all");
   const [sort, setSort] = useState<RatingSort>("desc");
@@ -76,42 +77,58 @@ export default function RatingsView({ titles }: { titles: RatedTitle[] }) {
             <Podium key={`${filter}-${sort}`} titles={podium} shame={shame} />
             {carousel.length > 0 && (
               <div className="mt-5">
-                <RankedCarousel titles={carousel} compact />
+                <RankedCarousel titles={carousel} shelf />
               </div>
             )}
           </section>
 
           {rest.length > 0 && (
-            <section className="card-bold p-4">
-              <h2 className="text-xs font-bold uppercase tracking-wide text-ink-soft">The Rest</h2>
-              <ol className="mt-3 divide-y-2 divide-ink/15">
-                {rest.map((item) => (
-                  <li key={item.titleId}>
-                    <Link href={`/title/${item.titleId}`} className="flex items-center gap-3 py-2.5">
-                      <span className="display w-8 shrink-0 text-right text-lg text-ink-soft">{item.rank}</span>
-                      <div className="relative h-[84px] w-14 shrink-0 overflow-hidden border-2 border-ink bg-panel hard-shadow-sm">
-                        {item.posterUrl && (
-                          <Image
-                            src={buildTmdbImageUrl(item.posterUrl, 154)}
-                            alt=""
-                            fill
-                            sizes="56px"
-                            className="object-cover"
-                            unoptimized
-                          />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-sm font-bold uppercase leading-tight tracking-wide">{item.title}</p>
-                        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-ink-soft">
-                          {MEDIA_LABEL[item.mediaType]}
-                        </p>
-                      </div>
-                      <span className="stamp shrink-0 text-xs">{item.rating.toFixed(1)}★</span>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
+            <section>
+              <h2 className="display text-xl">The Rest</h2>
+              {groupByTier(rest).map((group) => (
+                <div key={`${group.tier.key}-${group.items[0].titleId}`} className="mt-3">
+                  <div className="sticky top-[50px] z-20 -mx-4 bg-paper px-4 py-1.5">
+                    <div
+                      className={`hard-shadow-sm flex items-center justify-between border-[3px] border-ink px-3 py-1.5 ${TIER_BG[group.tier.key]}`}
+                    >
+                      <span className="display text-base">{group.tier.label}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide">
+                        {group.tier.range}★ · {group.items.length}
+                      </span>
+                    </div>
+                  </div>
+                  <ol className="card-bold mt-1.5 divide-y-2 divide-ink/15 px-3">
+                    {group.items.map((item) => (
+                      <li key={item.titleId}>
+                        <Link href={`/title/${item.titleId}`} className="flex items-center gap-3 py-2.5">
+                          <span className="display w-8 shrink-0 text-right text-lg text-ink-soft">{item.rank}</span>
+                          <div className="relative h-[84px] w-14 shrink-0 overflow-hidden border-2 border-ink bg-panel hard-shadow-sm">
+                            {item.posterUrl && (
+                              <Image
+                                src={buildTmdbImageUrl(item.posterUrl, 154)}
+                                alt=""
+                                fill
+                                sizes="56px"
+                                className="object-cover"
+                                unoptimized
+                              />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-bold uppercase leading-tight tracking-wide">{item.title}</p>
+                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-ink-soft">
+                              {MEDIA_LABEL[item.mediaType]}
+                            </p>
+                          </div>
+                          <span className={`stamp shrink-0 text-xs ${TIER_BG[group.tier.key]}`}>
+                            {item.rating.toFixed(1)}★
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
             </section>
           )}
         </>
