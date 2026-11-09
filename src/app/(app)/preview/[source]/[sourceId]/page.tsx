@@ -226,6 +226,9 @@ export default async function PreviewPage({
               : [year, title.isRunning ? "Running" : "Ended"].filter(Boolean).join(" · ")}
           </p>
           <TitleActionBar source={dataSource} sourceId={sourceId} mediaType={mediaType} />
+          <Suspense fallback={<div className="h-[30px] w-32 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
+            <WhereToWatch sourceId={sourceId} mediaType={mediaType} settings={watchSettings} />
+          </Suspense>
           <RatingBadges ratings={ratings} />
         </div>
       </div>
@@ -267,12 +270,6 @@ export default async function PreviewPage({
           ))}
         </div>
       )}
-
-      <div className="mt-6 px-4">
-        <Suspense fallback={<div className="h-[104px] animate-pulse border-[3px] border-ink bg-panel" />}>
-          <WhereToWatch sourceId={sourceId} mediaType={mediaType} settings={watchSettings} />
-        </Suspense>
-      </div>
 
       {mediaType !== "movie" && (
         <div className="mt-6 px-4">

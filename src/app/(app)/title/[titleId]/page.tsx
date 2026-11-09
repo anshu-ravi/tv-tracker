@@ -304,6 +304,11 @@ export default async function TitleDetailPage({
             titleId={title.id}
             initialStatus={status ?? undefined}
           />
+          {title.source === "tmdb" && (
+            <Suspense fallback={<div className="h-[30px] w-32 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
+              <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
+            </Suspense>
+          )}
           <RatingBadges ratings={ratings} />
           {status && <UserRatingControl titleId={title.id} initialRating={rating} />}
           {nextAirLabel && (
@@ -354,14 +359,6 @@ export default async function TitleDetailPage({
               )}
             </div>
           ))}
-        </div>
-      )}
-
-      {title.source === "tmdb" && (
-        <div className="mt-6 px-4">
-          <Suspense fallback={<div className="h-[104px] animate-pulse border-[3px] border-ink bg-panel" />}>
-            <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
-          </Suspense>
         </div>
       )}
 
