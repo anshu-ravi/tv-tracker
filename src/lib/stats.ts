@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MediaType } from "@/lib/types";
+import type { RatedTitle } from "@/lib/ratingsRank";
 
 // Server-only data layer for the "Your Stats" page. All aggregation happens
 // in public.get_user_stats() (see supabase/migrations) -- RLS on
@@ -85,4 +86,31 @@ export async function getUserStats(supabase: SupabaseClient): Promise<UserStats>
   const { data, error } = await supabase.rpc("get_user_stats");
   if (error) throw error;
   return data as UserStats;
+}
+
+interface RatedTitleRow {
+  title_id: string;
+  rating: number | string;
+  titles: { title: string; poster_url: string | null; media_type: MediaType } | null;
+}
+
+// Every title the caller has rated; RLS scopes user_titles to their own rows.
+export async function getRatedTitles(supabase: SupabaseClient): Promise<RatedTitle[]> {
+  const { data, error } = await supabase
+    .from("user_titles")
+    .select("title_id, rating, titles(title, poster_url, media_type)")
+    .not("rating", "is", null)
+    .returns<RatedTitleRow[]>();
+  if (error) throw error;
+  return (data ?? []).flatMap((row) =>
+    row.titles
+      ? [{
+          titleId: row.title_id,
+          title: row.titles.title,
+          posterUrl: row.titles.poster_url,
+          mediaType: row.titles.media_type,
+          rating: Number(row.rating),
+        }]
+      : [],
+  );
 }

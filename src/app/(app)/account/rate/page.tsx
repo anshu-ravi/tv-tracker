@@ -62,7 +62,7 @@ export default async function RatePage() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-6">
-      <BackButton />
+      <BackButton fallbackHref="/account" />
 
       <h1 className="display mb-1 mt-4 text-3xl">Rate Your Titles</h1>
       <p className="mb-4 text-xs text-ink-soft">

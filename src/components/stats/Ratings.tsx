@@ -1,38 +1,11 @@
-import Image from "next/image";
-import type { RatedTitleStat, UserStats } from "@/lib/stats";
-import { buildTmdbImageUrl } from "@/lib/tmdbImage";
-
-// Poster thumb + title + rating, shared by the Highest/Lowest Rated lists.
-function RatedRow({ item }: { item: RatedTitleStat }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="relative h-9 w-9 shrink-0 overflow-hidden border-2 border-ink bg-panel">
-        {item.posterUrl ? (
-          <Image
-            src={buildTmdbImageUrl(item.posterUrl, 72)}
-            alt={item.title}
-            fill
-            sizes="36px"
-            className="object-cover"
-            unoptimized
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <span className="text-[8px] font-bold uppercase leading-none text-ink-soft">
-              {item.title.slice(0, 2)}
-            </span>
-          </div>
-        )}
-      </div>
-      <p className="min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-wide">{item.title}</p>
-      <p className="shrink-0 text-[11px] font-bold">{item.rating.toFixed(1)}★</p>
-    </div>
-  );
-}
+import Link from "next/link";
+import type { UserStats } from "@/lib/stats";
+import type { RankedTitle } from "@/lib/ratingsRank";
+import RankedCarousel from "@/components/ratings/RankedCarousel";
 
 // Ratings summary: hero numbers, a half-star histogram, per-media-type
-// averages, and the top/bottom 5 rated titles.
-export default function Ratings({ stats }: { stats: UserStats }) {
+// averages, and a Top 10 carousel linking to /account/ratings.
+export default function Ratings({ stats, topRated }: { stats: UserStats; topRated: RankedTitle[] }) {
   if (stats.ratingsCount === 0) {
     return (
       <div className="card-bold p-4">
@@ -107,25 +80,15 @@ export default function Ratings({ stats }: { stats: UserStats }) {
         )}
       </div>
 
-      {stats.highestRated.length > 0 && (
+      {topRated.length > 0 && (
         <div className="card-bold p-4">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink-soft">Highest Rated</h2>
-          <div className="mt-3 space-y-2.5">
-            {stats.highestRated.map((item) => (
-              <RatedRow key={item.titleId} item={item} />
-            ))}
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="text-xs font-bold uppercase tracking-wide text-ink-soft">Top 10</h2>
+            <Link href="/account/ratings" className="text-[11px] font-bold uppercase tracking-wide underline">
+              See all ratings →
+            </Link>
           </div>
-        </div>
-      )}
-
-      {stats.lowestRated.length > 0 && (
-        <div className="card-bold p-4">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-ink-soft">Lowest Rated</h2>
-          <div className="mt-3 space-y-2.5">
-            {stats.lowestRated.map((item) => (
-              <RatedRow key={item.titleId} item={item} />
-            ))}
-          </div>
+          <RankedCarousel titles={topRated} />
         </div>
       )}
     </div>
