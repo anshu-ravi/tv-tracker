@@ -50,7 +50,7 @@ Two shared **catalog** tables + four per-user **tracking/organization** tables:
 - `lists` — user-created named collections, plus a single reserved `is_favorites=true` row per user (lazily created on first favorite) backing the Favorites feature.
 - `list_titles` — membership rows joining `lists` to `titles`, unique `(list_id, title_id)`.
 
-Enums: `media_type`, `watch_status`, `data_source`. An `updated_at` trigger (`set_updated_at`, `search_path=''`) maintains timestamps. Profile fields (display name, avatar) live on the Supabase Auth user, not a separate table; avatar images sit in the `avatars` Storage bucket.
+Enums: `media_type`, `watch_status`, `data_source`. An `updated_at` trigger (`set_updated_at`, `search_path=''`) maintains timestamps. Profile fields (display name, avatar, where-to-watch country and services) live on the Supabase Auth user, not a separate table; avatar images sit in the `avatars` Storage bucket.
 
 ### Row Level Security
 
@@ -71,6 +71,7 @@ Migrations are applied through the Supabase MCP tools (`apply_migration`), which
 - `lib/tmdbAnimeMatch.ts` — matching helpers used to resolve/enrich anime titles against TMDB.
 - `lib/animefillerlist.ts` — scrapes animefillerlist.com to tag filler episodes, keyed on `absolute_number`.
 - `lib/ratings.ts` — IMDb + Rotten Tomatoes ratings via OMDb, fetched live for the title detail screen (not stored in the DB).
+- `lib/watchSettings.ts` + the watch-provider functions in `lib/tmdb.ts` — "where to watch": TMDB's JustWatch-sourced subscription providers for a title, filtered to the user's services. Country and services are set at `/account/streaming` and stored in Auth `user_metadata` (`watch_region`, `watch_providers`); pages read them from the JWT, so the save route refreshes the session.
 - `lib/favorites.ts`, `lib/stats.ts`, `lib/useTitleActions.ts` — favorites/list helpers, stats aggregation, and the shared client-side hook behind card actions.
 - `lib/types.ts` — normalized shapes (`NormalizedTitle`, `NormalizedEpisode`) so catalog rows have one shape regardless of provider.
 - `lib/supabase/{client,server,middleware}.ts` + `src/proxy.ts` — browser and cookie-based server clients via `@supabase/ssr`.
