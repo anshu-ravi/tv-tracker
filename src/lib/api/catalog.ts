@@ -189,6 +189,18 @@ export async function ensureCatalogTitle(
 
   // tv, anime, and movie are all TMDB-only (search only ever returns
   // tmdb-sourced results — see classifyTmdbSearchResult in lib/tmdb.ts).
+  // A tv/anime label set by hand (title page toggle) must survive a re-add from search.
+  if (source === "tmdb" && (mediaType === "tv" || mediaType === "anime")) {
+    const { data: existing } = await supabase
+      .from("titles")
+      .select("media_type")
+      .eq("source", "tmdb")
+      .eq("source_id", sourceId)
+      .in("media_type", ["tv", "anime"])
+      .maybeSingle();
+    if (existing?.media_type === "tv" || existing?.media_type === "anime") mediaType = existing.media_type;
+  }
+
   if (mediaType === "tv" && source === "tmdb") {
     const fetched = await getTvTitle(sourceId);
     const result = await upsertTitleAndEpisodes(supabase, fetched);

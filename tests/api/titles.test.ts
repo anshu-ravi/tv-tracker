@@ -226,9 +226,9 @@ describe("POST /api/titles", () => {
     expect(fake.from).toHaveBeenCalledWith("episodes");
     expect(fake.from).toHaveBeenCalledWith("user_titles");
 
-    const titlesUpsert = fake.builders.titles[0].calls.find(
-      (c) => c.method === "upsert",
-    );
+    const titlesUpsert = fake.builders.titles
+      .flatMap((b) => b.calls)
+      .find((c) => c.method === "upsert");
     expect(titlesUpsert?.args[1]).toEqual({
       onConflict: "source,source_id,source_namespace",
     });
@@ -277,6 +277,33 @@ describe("POST /api/titles", () => {
 
     expect(response.status).toBe(201);
     expect(mockGetTvTitle).toHaveBeenCalledWith("202", { mediaType: "anime" });
+  });
+
+  it("keeps an existing anime label when the show is re-added as tv", async () => {
+    const fake = createFakeSupabase({
+      user: { id: "user-1" },
+      tableResults: {
+        titles: [
+          { data: { media_type: "anime" }, error: null },
+          { data: { id: "title-3" }, error: null },
+        ],
+        user_titles: {
+          data: { title_id: "title-3", status: "watchlist" },
+          error: null,
+        },
+      },
+    });
+    mockCreateClient.mockResolvedValue(fake);
+
+    const response = await callPost({
+      source: "tmdb",
+      sourceId: "303",
+      mediaType: "tv",
+      status: "watchlist",
+    });
+
+    expect(response.status).toBe(201);
+    expect(mockGetTvTitle).toHaveBeenCalledWith("303", { mediaType: "anime" });
   });
 
   it("fills completion when added directly as completed", async () => {
