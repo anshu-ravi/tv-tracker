@@ -18,13 +18,13 @@ const items = [
 ];
 
 describe("rankRatings", () => {
-  it("sorts high to low with shared ranks and alphabetical ties", () => {
+  it("sorts high to low, numbering sequentially with alphabetical ties", () => {
     const ranked = rankRatings(items, "all", "desc");
     expect(ranked.map((r) => [r.title, r.rank])).toEqual([
       ["Frieren", 1],
       ["Arrival", 2],
-      ["Bleach", 2],
-      ["Severance", 2],
+      ["Bleach", 3],
+      ["Severance", 4],
       ["Dune", 5],
     ]);
   });
@@ -34,8 +34,8 @@ describe("rankRatings", () => {
     expect(ranked.map((r) => [r.title, r.rank])).toEqual([
       ["Dune", 1],
       ["Arrival", 2],
-      ["Bleach", 2],
-      ["Severance", 2],
+      ["Bleach", 3],
+      ["Severance", 4],
       ["Frieren", 5],
     ]);
   });

@@ -17,20 +17,15 @@ export interface RankedTitle extends RatedTitle {
   rank: number;
 }
 
-// Equal ratings share a rank ("1, 2, 2, 4"), ties ordered alphabetically.
+// Ranks run 1, 2, 3… in order; equal ratings are ordered alphabetically.
 export function rankRatings(
   items: RatedTitle[],
   filter: RatingFilter,
   sort: RatingSort,
 ): RankedTitle[] {
   const dir = sort === "desc" ? -1 : 1;
-  const sorted = items
+  return items
     .filter((item) => filter === "all" || item.mediaType === filter)
-    .sort((a, b) => dir * (a.rating - b.rating) || a.title.localeCompare(b.title));
-
-  let rank = 0;
-  return sorted.map((item, i) => {
-    if (i === 0 || item.rating !== sorted[i - 1].rating) rank = i + 1;
-    return { ...item, rank };
-  });
+    .sort((a, b) => dir * (a.rating - b.rating) || a.title.localeCompare(b.title))
+    .map((item, i) => ({ ...item, rank: i + 1 }));
 }
