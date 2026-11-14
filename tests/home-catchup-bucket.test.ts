@@ -11,6 +11,10 @@ describe("classifyBucket", () => {
     expect(classifyBucket(null, today)).toBe("upnext");
   });
 
+  it("buckets a title with only undated marks as catchup", () => {
+    expect(classifyBucket(null, today, 24)).toBe("catchup");
+  });
+
   it("buckets a title watched 10 days ago as upnext", () => {
     expect(classifyBucket("2026-07-23T00:00:00Z", today)).toBe("upnext");
   });

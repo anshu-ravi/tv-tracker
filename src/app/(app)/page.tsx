@@ -77,14 +77,17 @@ const CATCHUP_THRESHOLD_DAYS = 30;
 
 // Pure bucketing decision, factored out for unit testing. `lastWatchedAtIso`
 // is the owner's most recent watched_at for the title (any timestamp format
-// `daysBetween` can consume the date portion of), or null if they've never
-// marked an episode of it. A title with no watch history yet is never
-// "behind" — it's brand new, not neglected.
+// `daysBetween` can consume the date portion of), or null if no mark has a
+// date. A title with no watch history yet is never "behind" — it's brand
+// new, not neglected. One with only undated marks (a retrospective complete
+// or an import, now back for a new season) was watched long enough ago that
+// nobody knows when, so it counts as behind.
 export function classifyBucket(
   lastWatchedAtIso: string | null,
   todayIso: string,
+  watchedCount = 0,
 ): "upnext" | "catchup" {
-  if (!lastWatchedAtIso) return "upnext";
+  if (!lastWatchedAtIso) return watchedCount > 0 ? "catchup" : "upnext";
   const daysSinceLastWatch = daysBetween(lastWatchedAtIso.slice(0, 10), todayIso);
   return daysSinceLastWatch > CATCHUP_THRESHOLD_DAYS ? "catchup" : "upnext";
 }
@@ -181,7 +184,7 @@ export default async function HomePage() {
 
     // Days since the owner last marked ANY episode of this title watched
     // (null if never) — see classifyBucket/CATCHUP_THRESHOLD_DAYS above.
-    const bucket = classifyBucket(row.lastWatchedAt, today);
+    const bucket = classifyBucket(row.lastWatchedAt, today, row.watchedCount);
 
     return {
       titleId: row.titleId,
