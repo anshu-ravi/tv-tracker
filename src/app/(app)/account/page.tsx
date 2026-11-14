@@ -40,6 +40,7 @@ export default async function AccountPage() {
   const [
     { data: latestRunningRun, error: latestRunningRunError },
     { data: latestAllRun, error: latestAllRunError },
+    { count: pendingResolveCount, error: pendingResolveError },
   ] = await Promise.all([
     supabase
       .from("refresh_runs")
@@ -55,10 +56,15 @@ export default async function AccountPage() {
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("user_titles")
+      .select("id", { count: "exact", head: true })
+      .not("pending_season_check", "is", null),
   ]);
 
   if (latestRunningRunError) throw latestRunningRunError;
   if (latestAllRunError) throw latestAllRunError;
+  if (pendingResolveError) throw pendingResolveError;
 
   const lastRunningRun = toSummary(latestRunningRun as RefreshRunRow | null);
   const lastAllRun = toSummary(latestAllRun as RefreshRunRow | null);
@@ -114,6 +120,21 @@ export default async function AccountPage() {
       </div>
 
       <RefreshTrackedButton lastRunningRun={lastRunningRun} lastAllRun={lastAllRun} />
+
+      {(pendingResolveCount ?? 0) > 0 && (
+        <Link
+          href="/account/resolve"
+          className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+        >
+          <p className="text-sm font-bold uppercase tracking-wide">Resolve Titles</p>
+          <span className="flex items-center gap-2">
+            <span className="border-[3px] border-ink bg-acid px-2 py-0.5 text-xs font-bold">
+              {pendingResolveCount}
+            </span>
+            <span className="display text-lg">→</span>
+          </span>
+        </Link>
+      )}
 
       <Link
         href="/account/rate"
