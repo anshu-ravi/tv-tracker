@@ -3,7 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import FriendTitleCard from "@/components/FriendTitleCard";
-import { MEDIA_FILTERS, type FriendCardTitle, type MediaFilter } from "@/lib/friendProfile";
+import {
+  MEDIA_FILTERS,
+  type FriendCardTitle,
+  type MediaFilter,
+} from "@/lib/friendProfile";
 import type { Comparison, RatedPair } from "@/lib/tasteCompare";
 import type { WatchStatus } from "@/lib/types";
 
@@ -16,14 +20,17 @@ function MatchCard({ match }: { match: Comparison["match"] }) {
         <div>
           <p className="display text-4xl leading-none">{match.percent}%</p>
           <p className="mt-1 text-[10px] font-bold uppercase tracking-wide">
-            {match.sample} shared ratings
+            Across {match.sample} titles you&apos;ve both rated
           </p>
         </div>
-        <span className="stamp text-xs">Taste match</span>
+        <span className="stamp text-xs">In sync</span>
       </div>
     );
   }
-  const progress = Math.min(100, Math.round((match.sample / match.needed) * 100));
+  const progress = Math.min(
+    100,
+    Math.round((match.sample / match.needed) * 100),
+  );
   return (
     <div className="card-bold relative min-h-36 overflow-hidden">
       <div
@@ -31,12 +38,12 @@ function MatchCard({ match }: { match: Comparison["match"] }) {
         className="pointer-events-none flex select-none items-center justify-between gap-3 bg-acid p-4 blur-md"
       >
         <p className="display text-6xl leading-none">87%</p>
-        <span className="stamp text-xs">Taste match</span>
+        <span className="stamp text-xs">In sync</span>
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-paper/70 px-6 text-center">
-        <p className="display text-lg leading-tight">🔒 Match locked</p>
+        <p className="display text-lg leading-tight">🔒 Sync locked</p>
         <p className="text-xs font-bold">
-          {`Rate ${match.needed} titles you've both watched to unlock it.`}
+          {`Rate ${match.needed} titles you've both watched to see how in sync you are.`}
         </p>
         <div className="mt-1 h-4 w-48 border-[3px] border-ink bg-paper">
           <div className="h-full bg-acid" style={{ width: `${progress}%` }} />
@@ -51,12 +58,14 @@ function MatchCard({ match }: { match: Comparison["match"] }) {
 
 function FilteredSection<T>({
   title,
+  hint,
   items,
   mediaOf,
   empty,
   render,
 }: {
   title: string;
+  hint: string;
   items: T[];
   mediaOf: (item: T) => string;
   empty: string;
@@ -64,37 +73,47 @@ function FilteredSection<T>({
 }) {
   const [filter, setFilter] = useState<MediaFilter>("all");
   const [showAll, setShowAll] = useState(false);
-  const filtered = filter === "all" ? items : items.filter((i) => mediaOf(i) === filter);
+  const filtered =
+    filter === "all" ? items : items.filter((i) => mediaOf(i) === filter);
   const visible = showAll ? filtered : filtered.slice(0, PAGE_SIZE);
 
   return (
     <section>
-      <div className="mb-2 flex items-baseline gap-2">
+      <div className="flex items-baseline gap-2">
         <h2 className="display text-xl">{title}</h2>
         <span className="stamp text-[10px]">{filtered.length}</span>
       </div>
-      <div className="mb-3 flex gap-1.5" role="group" aria-label={`Filter ${title}`}>
-        {MEDIA_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            type="button"
-            aria-pressed={filter === f.value}
-            onClick={() => {
-              setFilter(f.value);
-              setShowAll(false);
-            }}
-            className={`border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-              filter === f.value ? "bg-ink text-paper" : "bg-paper text-ink"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <p className="mb-2 text-xs text-ink-soft">{hint}</p>
+      {items.length > 0 && (
+        <div
+          className="mb-3 flex gap-1.5"
+          role="group"
+          aria-label={`Filter ${title}`}
+        >
+          {MEDIA_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={filter === f.value}
+              onClick={() => {
+                setFilter(f.value);
+                setShowAll(false);
+              }}
+              className={`border-2 border-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                filter === f.value ? "bg-ink text-paper" : "bg-paper text-ink"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
       {visible.length ? (
         render(visible)
       ) : (
-        <p className="card-bold px-4 py-6 text-center text-sm text-ink-soft">{empty}</p>
+        <p className="card-bold px-4 py-6 text-center text-sm text-ink-soft">
+          {empty}
+        </p>
       )}
       {filtered.length > PAGE_SIZE && !showAll && (
         <button
@@ -109,19 +128,36 @@ function FilteredSection<T>({
   );
 }
 
-function PairList({ pairs }: { pairs: RatedPair[] }) {
+function PairList({
+  pairs,
+  friendName,
+}: {
+  pairs: RatedPair[];
+  friendName: string;
+}) {
   return (
     <ul className="card-bold divide-y-2 divide-ink/10 px-3">
       {pairs.map((p) => (
         <li key={p.title.id} className="flex items-center gap-3 py-2">
-          <Link href={`/title/${p.title.id}`} className="min-w-0 flex-1 truncate text-sm font-bold">
+          <Link
+            href={`/title/${p.title.id}`}
+            className="min-w-0 flex-1 truncate text-sm font-bold"
+          >
             {p.title.title}
           </Link>
           <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide">
-            You <span className="border-2 border-ink bg-acid px-1">{p.mine.toFixed(1)}</span>
+            You{" "}
+            <span className="border-2 border-ink bg-acid px-1">
+              {p.mine.toFixed(1)}
+            </span>
           </span>
           <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide">
-            Them <span className="border-2 border-ink bg-paper px-1">{p.theirs.toFixed(1)}</span>
+            <span className="inline-block max-w-16 truncate align-bottom">
+              {friendName}
+            </span>{" "}
+            <span className="border-2 border-ink bg-paper px-1">
+              {p.theirs.toFixed(1)}
+            </span>
           </span>
         </li>
       ))}
@@ -132,9 +168,11 @@ function PairList({ pairs }: { pairs: RatedPair[] }) {
 export default function CompareView({
   comparison,
   mine,
+  friendName,
 }: {
   comparison: Comparison;
   mine: Record<string, WatchStatus>;
+  friendName: string;
 }) {
   const grid = (titles: FriendCardTitle[]) => (
     <div className="grid grid-cols-3 gap-2">
@@ -150,31 +188,35 @@ export default function CompareView({
     <div className="flex flex-col gap-5">
       <MatchCard match={comparison.match} />
       <FilteredSection
-        title="You agree"
+        title="Rated alike"
+        hint={`You and ${friendName} rated these within half a star.`}
         items={comparison.agree}
         mediaOf={pairMedia}
-        empty="No close ratings here yet."
-        render={(items) => <PairList pairs={items} />}
+        empty="No close ratings yet."
+        render={(items) => <PairList pairs={items} friendName={friendName} />}
       />
       <FilteredSection
-        title="You disagree"
+        title="Split decisions"
+        hint={`Your ratings are 1.5 stars or more apart.`}
         items={comparison.disagree}
         mediaOf={pairMedia}
-        empty="No big disagreements here."
-        render={(items) => <PairList pairs={items} />}
+        empty="No big disagreements yet."
+        render={(items) => <PairList pairs={items} friendName={friendName} />}
       />
       <FilteredSection
-        title="They loved, you haven't seen"
+        title={`${friendName}'s picks for you`}
+        hint={`${friendName} rated these 4+ and they're not in your library.`}
         items={comparison.theyLoved}
         mediaOf={titleMedia}
-        empty="Nothing new to suggest here."
+        empty="Nothing to suggest yet."
         render={grid}
       />
       <FilteredSection
-        title="You loved, they haven't seen"
+        title={`Your picks for ${friendName}`}
+        hint={`You rated these 4+ and they're not in ${friendName}'s library.`}
         items={comparison.youLoved}
         mediaOf={titleMedia}
-        empty="Nothing to recommend them here."
+        empty="Nothing to suggest yet."
         render={grid}
       />
     </div>

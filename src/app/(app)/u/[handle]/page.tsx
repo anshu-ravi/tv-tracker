@@ -19,7 +19,7 @@ import {
   type MediaFilter,
   type ProfileTab,
 } from "@/lib/friendProfile";
-import { compareLibraries, matchLabel } from "@/lib/tasteCompare";
+import { compareLibraries, syncLabel } from "@/lib/tasteCompare";
 import CompareView from "@/components/CompareView";
 import { BUCKET_ORDER } from "@/components/BucketSection";
 import BackButton from "@/components/BackButton";
@@ -174,7 +174,11 @@ export default async function ProfilePage({
       </div>
     );
   } else if (tab === "compare" && overall) {
-    body = <CompareView comparison={overall} mine={Object.fromEntries(mine)} />;
+    body = <CompareView
+        comparison={overall}
+        mine={Object.fromEntries(mine)}
+        friendName={profile.display_name || profile.handle}
+      />;
   } else {
     const lists = groupLists((listsRes.data ?? []) as FriendListRow[], type).filter(
       (l) => l.titles.length > 0 || type === "all",
@@ -201,13 +205,13 @@ export default async function ProfilePage({
       <BackButton fallbackHref="/account/friends" />
       <div className="mt-4 flex flex-col gap-3">
         {renderHeader(
-          overall && (
+          overall?.match.basis === "ratings" && (
             <Link
               href={hrefFor(profile.handle, "compare", type)}
               scroll={false}
               className="stamp text-xs"
             >
-              {matchLabel(overall.match)}
+              {syncLabel(overall.match)}
             </Link>
           ),
         )}

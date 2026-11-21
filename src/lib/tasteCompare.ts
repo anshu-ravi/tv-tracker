@@ -1,6 +1,6 @@
 import { toCard, toRating, type FriendCardTitle, type FriendLibraryRow } from "@/lib/friendProfile";
 
-/** Shared ratings needed before a match score is shown at all. */
+/** Shared ratings needed before the sync score is shown at all. */
 export const MIN_SHARED_RATINGS = 10;
 /** Largest possible gap on a 0.5–5.0 scale; a gap this wide scores 0%. */
 export const MAX_RATING_GAP = 4.5;
@@ -71,9 +71,7 @@ export function compareLibraries(mine: FriendLibraryRow[], theirs: FriendLibrary
   };
 }
 
-/** Header chip text, e.g. "87% match" or "Match locked · 4/10". */
-export function matchLabel(match: TasteMatch): string {
-  return match.basis === "ratings"
-    ? `${match.percent}% match`
-    : `Match locked · ${match.sample}/${match.needed}`;
+/** Header chip text, e.g. "87% in sync"; only meaningful once unlocked. */
+export function syncLabel(match: TasteMatch): string {
+  return match.basis === "ratings" ? `${match.percent}% in sync` : "Sync locked";
 }
