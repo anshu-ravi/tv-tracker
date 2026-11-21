@@ -51,13 +51,14 @@ export interface FriendList {
   titles: FriendCardTitle[];
 }
 
-export type ProfileTab = "top" | "library" | "lists";
+export type ProfileTab = "top" | "library" | "lists" | "compare";
 export type MediaFilter = "all" | MediaType;
 
 export const PROFILE_TABS: { value: ProfileTab; label: string }[] = [
   { value: "top", label: "Top rated" },
   { value: "library", label: "Library" },
   { value: "lists", label: "Lists" },
+  { value: "compare", label: "Compare" },
 ];
 
 export const MEDIA_FILTERS: { value: MediaFilter; label: string }[] = [
