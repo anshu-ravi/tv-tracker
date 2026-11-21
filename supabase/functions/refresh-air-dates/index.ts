@@ -433,43 +433,12 @@ Deno.serve(async (req: Request) => {
     errors: [],
   };
 
-  // Sweep every title the user is tracking, any status — mirrors
-  // src/app/api/titles/refresh/route.ts (scope: "tracked"). This is a
-  // single-user app, so `user_titles` has no per-user filter here; every row
-  // belongs to the one owner.
-  const { data: userTitleRows, error: userTitlesError } = await supabase
-    .from("user_titles")
-    .select("title_id");
-
-  if (userTitlesError) {
-    console.error("Failed to load tracked titles:", userTitlesError.message);
-    await recordRun(scope, startedAt, summary, userTitlesError.message);
-    return new Response(
-      JSON.stringify({ ok: false, error: userTitlesError.message }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    );
-  }
-
-  const titleIds = Array.from(
-    new Set(((userTitleRows ?? []) as { title_id: string }[]).map((r) => r.title_id)),
-  );
-
-  if (titleIds.length === 0) {
-    console.log(`refresh-air-dates: scope=${scope} no tracked titles, nothing to do`);
-    await recordRun(scope, startedAt, summary);
-    return new Response(JSON.stringify({ ok: true, scope, ...summary }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  }
-
-  // "running" scope narrows to titles.is_running = true; "all" sweeps every
-  // tracked title. Both stay joined to user_titles via titleIds above — never
-  // the whole titles catalog.
+  // Every tracked title (any account, any status), via an inner join on
+  // user_titles. A `.in("id", [...])` list of every tracked id overflowed the
+  // gateway's URL limit once tracking passed ~400 titles.
   let titlesQuery = supabase
     .from("titles")
-    .select("id, source, source_id, media_type, title")
-    .in("id", titleIds);
+    .select("id, source, source_id, media_type, title, user_titles!inner(title_id)");
   if (scope === "running") {
     titlesQuery = titlesQuery.eq("is_running", true);
   }
@@ -484,7 +453,9 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const titles = (titleRows ?? []) as TitleRow[];
+  const titles = ((titleRows ?? []) as (TitleRow & { user_titles: unknown })[]).map(
+    ({ user_titles: _joined, ...row }) => row,
+  );
 
   // Modest concurrency — see mapWithConcurrency above.
   await mapWithConcurrency(titles, 3, (row) => refreshOne(row, summary));
