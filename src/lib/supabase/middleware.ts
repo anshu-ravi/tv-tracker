@@ -45,6 +45,8 @@ export async function updateSession(request: NextRequest) {
   if (!data?.claims && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
+    if (pathname !== "/") url.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(url);
   }
 
