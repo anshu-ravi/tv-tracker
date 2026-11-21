@@ -64,6 +64,18 @@ export class FakeQueryBuilder implements PromiseLike<TableResult> {
     return this.record("in", args);
   }
 
+  or(...args: unknown[]): this {
+    return this.record("or", args);
+  }
+
+  neq(...args: unknown[]): this {
+    return this.record("neq", args);
+  }
+
+  limit(...args: unknown[]): this {
+    return this.record("limit", args);
+  }
+
   range(...args: unknown[]): this {
     return this.record("range", args);
   }

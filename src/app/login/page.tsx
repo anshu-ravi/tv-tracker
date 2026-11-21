@@ -1,23 +1,25 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signIn, signUp } from "./actions";
+import { safeNext } from "@/lib/safeNext";
 
 export default async function LoginPage({
   searchParams,
 }: {
   // Next 16: searchParams is a Promise, must be awaited.
-  searchParams: Promise<{ error?: string; message?: string }>;
+  searchParams: Promise<{ error?: string; message?: string; next?: string }>;
 }) {
   // Single-user app: if already signed in, /login has nothing to do here.
+  const { error, message, next: rawNext } = await searchParams;
+  const next = safeNext(rawNext);
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (user) {
-    redirect("/");
+    redirect(next);
   }
-
-  const { error, message } = await searchParams;
 
   return (
     <main className="flex min-h-full items-center justify-center p-6">
@@ -43,6 +45,7 @@ export default async function LoginPage({
         ) : null}
 
         <form className="flex flex-col gap-4">
+          <input type="hidden" name="next" value={next} />
           <label className="flex flex-col gap-1 text-sm font-semibold uppercase tracking-wide">
             Email
             <input

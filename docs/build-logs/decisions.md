@@ -23,6 +23,14 @@ Things that were tried, measured or ruled out, kept here so nobody retries them 
 - Edge Function secrets (`supabase secrets set`) and the service-role key in Vault are separate stores from the app's `.env` files. Setting one doesn't set the other.
 - A failed animefillerlist fetch must leave existing filler data alone. Writing `filler_available = false` after a network hiccup would wipe tags until the next good run.
 
+## Friends
+
+- **Friends read each other's data only through security-definer RPCs, never through RLS.** Almost every existing query (Home, Library, stats, the Home/stats RPCs, the recommendations pipeline) relies on RLS to return only the caller's rows, with only about a dozen explicit `user_id` filters. A "friends can select" policy on `user_titles` or `watched_episodes` would silently merge a friend's library into all of those. Tracking tables stay owner-only; friend-facing functions check the friendship and return a whitelist of fields. This is a deliberate exception to the "keep RPCs security invoker" rule, which still holds for the caller's own Home/stats RPCs.
+- **The friend code lives in its own owner-only table, not on `profiles`.** Profiles are readable by every signed-in account (search, profile headers), and the code is effectively a key: redeeming it creates a friendship with no accept step.
+- **Opening an invite link shows a one-tap "Add friend" rather than adding on load.** Chat apps fetch links to build previews and Next prefetches routes; neither should be able to create a friendship.
+- **Handles are generated from the display name, never the email**, so a new account's handle doesn't leak its email address.
+- **`supabase db push` is unsafe here.** About a dozen migrations are recorded remotely under different versions from their local files, so a push treats old files as unapplied. Apply a single file with `supabase db query --linked -f <file>` and record it with `supabase migration repair --status applied <version>`, or use the MCP `apply_migration` tool.
+
 ## Closed, don't reopen without a new reason
 
 - **Avatar icon picker.** A bundled-SVG picker replacing photo upload was built and rejected on sight. Photo upload stays.
