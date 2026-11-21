@@ -47,9 +47,12 @@ interface RailSlot {
 // pattern from the old Search screen this replaces).
 export default function ExploreClient({
   existing,
+  friendsLoved: initialFriendsLoved = [],
 }: {
   existing: Record<string, ExistingLibraryEntry>;
+  friendsLoved?: SearchResult[];
 }) {
+  const [friendsLoved, setFriendsLoved] = useState(initialFriendsLoved);
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -282,6 +285,26 @@ export default function ExploreClient({
     }
   }
 
+  function handleFriendDismiss(result: SearchResult) {
+    const triple = { source: result.source, sourceId: result.sourceId, mediaType: result.mediaType };
+    const key = titleKey(result.source, result.sourceId, result.mediaType);
+    const previous = friendsLoved;
+    setFriendsLoved((prev) => prev.filter((r) => titleKey(r.source, r.sourceId, r.mediaType) !== key));
+    showToast(`Removed “${result.title}”`, null);
+    fetch("/api/recommendations/dismiss", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(triple),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Dismiss failed");
+      })
+      .catch(() => {
+        setFriendsLoved(previous);
+        showToast("Couldn't remove — try again", null);
+      });
+  }
+
   const { becauseRails, forYouRails } = organizeRecommendationRails(recRails);
   const showEmptyRecState = shouldShowEmptyRecommendationsState({
     loading: recLoading,
@@ -337,6 +360,15 @@ export default function ExploreClient({
 
       {isExploring && (
         <>
+          <ExploreRail
+            heading="Friends loved"
+            results={friendsLoved}
+            existing={existing}
+            onAdded={() => router.refresh()}
+            onDismiss={handleFriendDismiss}
+            isFirstSection={friendsLoved.length > 0}
+          />
+
           {becauseRails.map((rail) => (
             <ExploreRail
               key={rail.rail}

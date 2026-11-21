@@ -135,10 +135,14 @@ export default function SearchResultCard({
         <p className="truncate text-[10px] font-bold uppercase tracking-wide">
           {result.title}
         </p>
-        <p className="text-[9px] uppercase text-ink-soft">
-          {result.mediaType}
-          {result.year ? ` · ${result.year}` : ""}
-        </p>
+        {result.note ? (
+          <p className="truncate text-[9px] font-bold uppercase text-ink">{result.note}</p>
+        ) : (
+          <p className="text-[9px] uppercase text-ink-soft">
+            {result.mediaType}
+            {result.year ? ` · ${result.year}` : ""}
+          </p>
+        )}
 
         {savedStatus ? (
           <p className="stamp mt-2 block w-full text-center text-[10px]">
