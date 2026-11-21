@@ -19,7 +19,8 @@ import {
   type MediaFilter,
   type ProfileTab,
 } from "@/lib/friendProfile";
-import { compareLibraries, matchBasis, matchLabel, type RatedPair } from "@/lib/tasteCompare";
+import { compareLibraries, matchLabel } from "@/lib/tasteCompare";
+import CompareView from "@/components/CompareView";
 import { BUCKET_ORDER } from "@/components/BucketSection";
 import BackButton from "@/components/BackButton";
 import ProfileAvatar from "@/components/ProfileAvatar";
@@ -50,38 +51,6 @@ function Grid({
         <FriendTitleCard key={t.id} title={t} myStatus={mine.get(t.id) ?? null} muted={muted} />
       ))}
     </div>
-  );
-}
-
-function PairList({ pairs }: { pairs: RatedPair[] }) {
-  return (
-    <ul className="card-bold divide-y-2 divide-ink/10 px-3">
-      {pairs.map((p) => (
-        <li key={p.title.id} className="flex items-center gap-3 py-2">
-          <Link href={`/title/${p.title.id}`} className="min-w-0 flex-1 truncate text-sm font-bold">
-            {p.title.title}
-          </Link>
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide">
-            You <span className="border-2 border-ink bg-acid px-1">{p.mine.toFixed(1)}</span>
-          </span>
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide">
-            Them <span className="border-2 border-ink bg-paper px-1">{p.theirs.toFixed(1)}</span>
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="mb-3 flex items-baseline gap-2">
-        <h2 className="display text-xl">{title}</h2>
-        <span className="stamp text-[10px]">{count}</span>
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -204,38 +173,8 @@ export default async function ProfilePage({
         ))}
       </div>
     );
-  } else if (tab === "compare") {
-    const c = compareLibraries(filterByMedia(myLibrary, type), filtered);
-    body = (
-      <div className="flex flex-col gap-5">
-        <div className="card-bold flex items-center justify-between gap-3 bg-acid p-4">
-          <div>
-            <p className="display text-4xl leading-none">
-              {c.match.basis === "none" ? "—" : `${c.match.percent}%`}
-            </p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wide">{matchBasis(c.match)}</p>
-          </div>
-          <span className="stamp text-xs">Taste match</span>
-        </div>
-        {c.match.basis === "watching" && (
-          <p className="-mt-3 text-xs text-ink-soft">
-            Based on what you&apos;ve both watched, until you share 5 ratings.
-          </p>
-        )}
-        <Section title="You agree" count={c.agree.length}>
-          {c.agree.length ? <PairList pairs={c.agree} /> : <Empty>No close ratings yet.</Empty>}
-        </Section>
-        <Section title="You disagree" count={c.disagree.length}>
-          {c.disagree.length ? <PairList pairs={c.disagree} /> : <Empty>No big disagreements.</Empty>}
-        </Section>
-        <Section title="They loved, you haven't seen" count={c.theyLoved.length}>
-          {c.theyLoved.length ? <Grid titles={c.theyLoved} mine={mine} /> : <Empty>Nothing new to suggest.</Empty>}
-        </Section>
-        <Section title="You loved, they haven't seen" count={c.youLoved.length}>
-          {c.youLoved.length ? <Grid titles={c.youLoved} mine={mine} /> : <Empty>Nothing to recommend them.</Empty>}
-        </Section>
-      </div>
-    );
+  } else if (tab === "compare" && overall) {
+    body = <CompareView comparison={overall} mine={Object.fromEntries(mine)} />;
   } else {
     const lists = groupLists((listsRes.data ?? []) as FriendListRow[], type).filter(
       (l) => l.titles.length > 0 || type === "all",
@@ -267,7 +206,6 @@ export default async function ProfilePage({
               href={hrefFor(profile.handle, "compare", type)}
               scroll={false}
               className="stamp text-xs"
-              title={matchBasis(overall.match)}
             >
               {matchLabel(overall.match)}
             </Link>
@@ -301,7 +239,7 @@ export default async function ProfilePage({
           ))}
         </nav>
 
-        <div className="flex gap-1.5">
+        <div className={`flex gap-1.5 ${tab === "compare" ? "hidden" : ""}`}>
           {MEDIA_FILTERS.map((f) => (
             <Link
               key={f.value}
