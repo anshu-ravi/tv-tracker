@@ -11,6 +11,8 @@ import BackButton from "@/components/BackButton";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
 import RatingBadges from "@/components/RatingBadges";
 import SimilarRail from "@/components/SimilarRail";
+import FriendsOnTitle from "@/components/FriendsOnTitle";
+import type { FriendOnTitleRow } from "@/lib/friendsContext";
 import TitleActionBar from "@/components/TitleActionBar";
 import UserRatingControl from "@/components/UserRatingControl";
 import type { DataSource, MediaType, TitleCredits, TitleRatings, WatchStatus } from "@/lib/types";
@@ -130,6 +132,7 @@ export default async function TitleDetailPage({
     { data: userTitleData, error: userTitleError },
     { data: episodesData, error: episodesError },
     { data: watchedData, error: watchedError },
+    { data: friendsData, error: friendsError },
   ] = await Promise.all([
     supabase
       .from("user_titles")
@@ -146,11 +149,15 @@ export default async function TitleDetailPage({
       .order("episode_number", { ascending: true }),
     // RLS already scopes watched_episodes to the signed-in user.
     supabase.from("watched_episodes").select("episode_id").eq("title_id", titleId),
+    supabase.rpc("friends_on_title", { p_title: titleId }),
   ]);
 
   if (userTitleError) throw userTitleError;
   if (episodesError) throw episodesError;
   if (watchedError) throw watchedError;
+  // The friends strip is secondary; a failure here shouldn't take the page down.
+  if (friendsError) console.warn("Failed to load friends on title:", friendsError.message);
+  const friendsOnTitle = (friendsError ? [] : friendsData ?? []) as FriendOnTitleRow[];
 
   const userTitle = userTitleData as { status: WatchStatus; rating: number | null } | null;
   const status = userTitle?.status ?? null;
@@ -324,6 +331,8 @@ export default async function TitleDetailPage({
           )}
         </div>
       </div>
+
+      <FriendsOnTitle rows={friendsOnTitle} isMovie={isMovie} />
 
       {title.overview && (
         <p className="px-4 pt-4 text-sm leading-relaxed text-ink-soft">

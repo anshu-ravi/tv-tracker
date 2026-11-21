@@ -86,6 +86,8 @@ export interface SearchResult {
   year?: number | null;
   posterUrl?: string | null;
   overview?: string | null;
+  // Short attribution shown instead of the media-type line, e.g. "Andres ★ 4.5".
+  note?: string;
 }
 
 // A caller's own library entry for a title, keyed by titleKey(...) at the

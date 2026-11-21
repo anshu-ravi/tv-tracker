@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareLibraries, matchLabel, MIN_SHARED_RATINGS } from "@/lib/tasteCompare";
+import { compareLibraries, syncLabel, MIN_SHARED_RATINGS } from "@/lib/tasteCompare";
 import type { FriendLibraryRow } from "@/lib/friendProfile";
 
 function row(id: string, overrides: Partial<FriendLibraryRow> = {}): FriendLibraryRow {
@@ -51,8 +51,8 @@ describe("compareLibraries: match score", () => {
   });
 
   it("labels both states", () => {
-    expect(matchLabel({ basis: "ratings", percent: 87, sample: 23 })).toBe("87% match");
-    expect(matchLabel({ basis: "locked", sample: 4, needed: 10 })).toBe("Match locked · 4/10");
+    expect(syncLabel({ basis: "ratings", percent: 87, sample: 23 })).toBe("87% in sync");
+    expect(syncLabel({ basis: "locked", sample: 4, needed: 10 })).toBe("Sync locked");
   });
 });
 
