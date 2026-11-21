@@ -15,7 +15,7 @@
 //     nightly: `is_running` is exactly the property that means "something
 //     about this title can still change," so this is the cheap, frequent
 //     sweep.
-//   - "all" — every title in `user_titles`, regardless of status. Scheduled
+//   - "all" — every non-running title in `user_titles`, any status. Scheduled
 //     weekly. This is what keeps `is_running` itself honest — a show that
 //     quietly resumes would otherwise never re-enter the nightly set. Also
 //     mirrors src/app/api/titles/refresh/route.ts: `completed`/`dnf` titles
@@ -82,6 +82,8 @@ interface TitleRow {
   source_id: string;
   media_type: MediaType;
   title: string;
+  // Catalog episode count (seasons > 0); set only for the "all" scope.
+  episode_count: number | null;
 }
 
 interface EpisodeUpsert {
@@ -171,7 +173,13 @@ interface TmdbEpisode {
 // plus the anime absolute_number counter. Keep in sync with that function.
 async function refreshTvTitle(
   row: TitleRow,
-): Promise<{ next: NextEpisodeUpdate; episodes: EpisodeUpsert[]; isRunning: boolean }> {
+  storedEpisodeCount: number | null,
+): Promise<{
+  next: NextEpisodeUpdate;
+  episodes: EpisodeUpsert[];
+  isRunning: boolean;
+  skippedEpisodes: boolean;
+}> {
   const tv = await tmdbFetch<TmdbTv>(`/tv/${row.source_id}`);
   const next = tv.next_episode_to_air;
 
@@ -189,6 +197,16 @@ async function refreshTvTitle(
   const realSeasons = tv.seasons.filter(
     (s) => s.season_number > 0 && s.episode_count > 0,
   );
+  const isRunning = RUNNING_STATUSES.includes(tv.status);
+
+  // Weekly "all" sweep: an ended title whose episode count still matches the
+  // catalog has nothing new, so skip the per-season fetches (the CPU cost).
+  if (storedEpisodeCount !== null && !isRunning) {
+    const tmdbCount = realSeasons.reduce((n, s) => n + s.episode_count, 0);
+    if (tmdbCount === storedEpisodeCount) {
+      return { next: nextUpdate, episodes: [], isRunning, skippedEpisodes: true };
+    }
+  }
 
   const episodes: EpisodeUpsert[] = [];
   // Anime keeps an absolute_number (1..N across all real seasons, broadcast
@@ -219,7 +237,8 @@ async function refreshTvTitle(
   return {
     next: nextUpdate,
     episodes,
-    isRunning: RUNNING_STATUSES.includes(tv.status),
+    isRunning,
+    skippedEpisodes: false,
   };
 }
 
@@ -268,6 +287,7 @@ interface RunSummary {
   processed: number;
   updated: number;
   episodesUpserted: number;
+  episodesSkipped: number;
   errors: { titleId: string; title: string; message: string }[];
 }
 
@@ -282,7 +302,8 @@ async function refreshOne(row: TitleRow, summary: RunSummary): Promise<void> {
     // `finally` block below) but never toward `updated`.
     if (shouldSkipRefresh(row.media_type)) return;
 
-    const result = await refreshTvTitle(row);
+    const result = await refreshTvTitle(row, row.episode_count);
+    if (result.skippedEpisodes) summary.episodesSkipped += 1;
 
     // Anime-only, and deliberately AFTER refreshTvTitle but BEFORE either
     // write below: it mutates result.episodes in place with filler_type/
@@ -291,7 +312,9 @@ async function refreshOne(row: TitleRow, summary: RunSummary): Promise<void> {
     // pair to fold into the same titles update this title already needed,
     // rather than issuing a second one.
     const fillerUpdate =
-      row.media_type === "anime" ? await applyFillerData(row, result.episodes) : null;
+      row.media_type === "anime" && !result.skippedEpisodes
+        ? await applyFillerData(row, result.episodes)
+        : null;
 
     const { error: updateError } = await supabase
       .from("titles")
@@ -430,17 +453,23 @@ Deno.serve(async (req: Request) => {
     processed: 0,
     updated: 0,
     episodesUpserted: 0,
+    episodesSkipped: 0,
     errors: [],
   };
 
-  // Every tracked title (any account, any status), via an inner join on
+  // Tracked titles (any account, any status), via an inner join on
   // user_titles. A `.in("id", [...])` list of every tracked id overflowed the
   // gateway's URL limit once tracking passed ~400 titles.
+  const columns = "id, source, source_id, media_type, title, user_titles!inner(title_id)";
   let titlesQuery = supabase
     .from("titles")
-    .select("id, source, source_id, media_type, title, user_titles!inner(title_id)");
+    .select(scope === "all" ? `${columns}, episodes(count)` : columns);
   if (scope === "running") {
     titlesQuery = titlesQuery.eq("is_running", true);
+  } else {
+    // Running titles get the nightly full refresh, so the weekly sweep only
+    // needs to catch ended titles that came back or gained episodes.
+    titlesQuery = titlesQuery.eq("is_running", false).gt("episodes.season_number", 0);
   }
   const { data: titleRows, error: titlesError } = await titlesQuery;
 
@@ -453,8 +482,15 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const titles = ((titleRows ?? []) as (TitleRow & { user_titles: unknown })[]).map(
-    ({ user_titles: _joined, ...row }) => row,
+  type FetchedRow = Omit<TitleRow, "episode_count"> & {
+    user_titles: unknown;
+    episodes?: { count: number }[];
+  };
+  const titles: TitleRow[] = ((titleRows ?? []) as unknown as FetchedRow[]).map(
+    ({ user_titles: _joined, episodes, ...row }) => ({
+      ...row,
+      episode_count: episodes ? (episodes[0]?.count ?? 0) : null,
+    }),
   );
 
   // Modest concurrency — see mapWithConcurrency above.
@@ -462,7 +498,7 @@ Deno.serve(async (req: Request) => {
 
   console.log(
     `refresh-air-dates: scope=${scope} processed=${summary.processed} updated=${summary.updated} ` +
-      `episodesUpserted=${summary.episodesUpserted} errors=${summary.errors.length}`,
+      `episodesUpserted=${summary.episodesUpserted} episodesSkipped=${summary.episodesSkipped} errors=${summary.errors.length}`,
   );
   if (summary.errors.length > 0) {
     console.error("refresh-air-dates errors:", JSON.stringify(summary.errors));

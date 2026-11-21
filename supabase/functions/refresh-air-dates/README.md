@@ -30,7 +30,7 @@ scheduled twice, at different cadences:
 | Scope | Schedule | Job name | What it sweeps |
 | --- | --- | --- | --- |
 | `running` | Nightly, 03:00 UTC | `refresh-air-dates-nightly` | Only titles where `titles.is_running = true` — the cheap, frequent sweep, since `is_running` is exactly the property that means "something about this title can still change." |
-| `all` | Weekly, Sunday 04:00 UTC | `refresh-air-dates-weekly` | Every title in `user_titles`, any status (watchlist/watching/completed/dnf). This is what keeps `is_running` itself honest — a show that quietly resumes would otherwise never re-enter the nightly `running` set. |
+| `all` | Weekly, Sunday 04:00 UTC | `refresh-air-dates-weekly` | Every tracked title (any status) with `is_running = false`; running titles are already covered nightly. This is what keeps `is_running` itself honest — a show that quietly resumes would otherwise never re-enter the nightly `running` set. To stay under the Edge Function CPU limit, it fetches only each show's TMDB summary and refetches seasons only when the show is running again or TMDB's episode count differs from the catalog's. |
 
 Both scopes stay restricted to titles the owner actually tracks (joined to
 `user_titles`) — never the whole `titles` catalog.
@@ -97,7 +97,7 @@ curl -i --location --request POST \
 ```
 
 Expect a `200` with a JSON summary:
-`{ ok, scope, processed, updated, episodesUpserted, errors }`. An
+`{ ok, scope, processed, updated, episodesUpserted, episodesSkipped, errors }`. An
 unrecognised `scope` value (e.g. `{"scope":"weekly"}`) returns `400`.
 
 Check function logs (`supabase functions logs refresh-air-dates` or the
