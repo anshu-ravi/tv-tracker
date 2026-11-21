@@ -30,7 +30,7 @@ const TABS = [
   { href: "/account", label: "Account", Icon: UserIcon, matchPrefixes: ["/account"] as const, exact: false },
 ] as const;
 
-export default function BottomNav() {
+export default function BottomNav({ accountBadge = 0 }: { accountBadge?: number }) {
   const pathname = usePathname();
 
   return (
@@ -59,7 +59,17 @@ export default function BottomNav() {
                   active ? "bg-acid text-ink" : "bg-paper text-ink-soft"
                 }`}
               >
-                <tab.Icon className="h-5 w-5" />
+                <span className="relative">
+                  <tab.Icon className="h-5 w-5" />
+                  {tab.href === "/account" && accountBadge > 0 && (
+                    <span
+                      aria-label={`${accountBadge} friend request${accountBadge === 1 ? "" : "s"}`}
+                      className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center border-2 border-ink bg-[#ff5c39] px-0.5 text-[9px] font-bold leading-none text-ink"
+                    >
+                      {accountBadge}
+                    </span>
+                  )}
+                </span>
                 <span className="text-[10px] font-bold uppercase tracking-wide">
                   {tab.label}
                 </span>

@@ -1,5 +1,6 @@
 import BottomNav from "@/components/BottomNav";
 import ScrollableMain from "@/components/ScrollableMain";
+import { createClient } from "@/lib/supabase/server";
 
 // Shared shell for every authed screen: a slim static header (brand only —
 // identity and sign out now live on /account), a scrolling main, and a
@@ -13,11 +14,23 @@ import ScrollableMain from "@/components/ScrollableMain";
 // visually detach and strand mid-screen when the software keyboard opens or
 // during momentum scrolling. Nothing in this tree is `fixed` anymore, so
 // there is nothing for iOS to strand.
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  let friendRequests = 0;
+  if (userId) {
+    const { count } = await supabase
+      .from("friend_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", userId);
+    friendRequests = count ?? 0;
+  }
+
   return (
     <div className="mx-auto flex h-dvh w-full max-w-md flex-col overflow-hidden border-x-[3px] border-ink">
       <header className="flex items-center border-b-[3px] border-ink bg-paper px-4 py-3">
@@ -26,7 +39,7 @@ export default function AppLayout({
 
       <ScrollableMain>{children}</ScrollableMain>
 
-      <BottomNav />
+      <BottomNav accountBadge={friendRequests} />
     </div>
   );
 }

@@ -41,6 +41,7 @@ export default async function AccountPage() {
     { data: latestRunningRun, error: latestRunningRunError },
     { data: latestAllRun, error: latestAllRunError },
     { count: pendingResolveCount, error: pendingResolveError },
+    { count: friendRequestCount, error: friendRequestError },
   ] = await Promise.all([
     supabase
       .from("refresh_runs")
@@ -60,11 +61,16 @@ export default async function AccountPage() {
       .from("user_titles")
       .select("id", { count: "exact", head: true })
       .not("pending_season_check", "is", null),
+    supabase
+      .from("friend_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", claims?.sub ?? ""),
   ]);
 
   if (latestRunningRunError) throw latestRunningRunError;
   if (latestAllRunError) throw latestAllRunError;
   if (pendingResolveError) throw pendingResolveError;
+  if (friendRequestError) throw friendRequestError;
 
   const lastRunningRun = toSummary(latestRunningRun as RefreshRunRow | null);
   const lastAllRun = toSummary(latestAllRun as RefreshRunRow | null);
@@ -135,6 +141,21 @@ export default async function AccountPage() {
           </span>
         </Link>
       )}
+
+      <Link
+        href="/account/friends"
+        className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+      >
+        <p className="text-sm font-bold uppercase tracking-wide">Friends</p>
+        <span className="flex items-center gap-2">
+          {(friendRequestCount ?? 0) > 0 && (
+            <span className="border-[3px] border-ink bg-acid px-2 py-0.5 text-xs font-bold">
+              {friendRequestCount}
+            </span>
+          )}
+          <span className="display text-lg">→</span>
+        </span>
+      </Link>
 
       <Link
         href="/account/rate"
