@@ -37,7 +37,8 @@ function row(overrides: Partial<FriendLibraryRow>): FriendLibraryRow {
 describe("parseTab / parseMediaFilter", () => {
   it("fall back to defaults for unknown values", () => {
     expect(parseTab("library")).toBe("library");
-    expect(parseTab("compare")).toBe("top");
+    expect(parseTab("compare")).toBe("compare");
+    expect(parseTab("stats")).toBe("top");
     expect(parseMediaFilter("movie")).toBe("movie");
     expect(parseMediaFilter(undefined)).toBe("all");
   });
