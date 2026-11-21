@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ProfileAvatar from "@/components/ProfileAvatar";
 import {
@@ -30,13 +31,15 @@ async function friendAction(payload: Record<string, unknown>) {
 function PersonRow({ profile, children }: { profile: Profile; children?: React.ReactNode }) {
   return (
     <li className="flex items-center gap-3 py-2">
-      <ProfileAvatar profile={profile} size={40} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold">{profile.display_name || profile.handle}</p>
-        <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-soft">
-          @{profile.handle}
-        </p>
-      </div>
+      <Link href={`/u/${profile.handle}`} className="flex min-w-0 flex-1 items-center gap-3">
+        <ProfileAvatar profile={profile} size={40} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold">{profile.display_name || profile.handle}</p>
+          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+            @{profile.handle}
+          </p>
+        </div>
+      </Link>
       {children}
     </li>
   );
