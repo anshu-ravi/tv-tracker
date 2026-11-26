@@ -44,6 +44,10 @@ The title header had about ten equal-weight bordered controls, an always-open ra
 
 Same treatment as the title page: ten identical heavy cards, an always-open profile form, and the email shown three times made the page feel like a settings dump with the interesting part (stats) last. Now a profile header with an Edit sheet (photo, name, handle), an acid stats strip loaded behind Suspense (it runs the same `get_user_stats` RPC as the Stats page), a resolve banner only when titles are pending, and two 2px groups (You, Settings) whose rows carry live subtitles. Refresh shows only the latest cron run of either scope; the daily/weekly split was dropped as rarely useful.
 
+## Streaming page declutter
+
+The 108-logo grid buried a handful of picks and its brand colours fought the acid selection. It is now a list: picked services first (remove with ×), then a searchable add list showing TMDB's top 12 for the country with "Show all". Names ending in "Channel" (Amazon/Apple add-on bundles, about 40% of Spain's list) only appear in search. Every tap autosaves through a serialised queue that sends only the newest state and rolls back on failure, matching the instant toggles elsewhere in the app.
+
 ## Closed, don't reopen without a new reason
 
 - **Avatar icon picker.** A bundled-SVG picker replacing photo upload was built and rejected on sight. Photo upload stays.
