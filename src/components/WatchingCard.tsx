@@ -7,56 +7,48 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import ProgressBar from "@/components/ProgressBar";
 import FillerTag, { type FillerType } from "@/components/FillerTag";
+import BottomSheet from "@/components/BottomSheet";
+import { AccountRow } from "@/components/account/AccountList";
+import { TvIcon } from "@/components/icons";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
 
-// Everything the Home page's server component already knows about a single
-// "currently watching" title, pre-computed there (progress counts + which
-// episode a tap should mark) so this client component stays dumb about SQL.
+// One "currently watching" title, pre-computed by the Home page.
 export interface WatchingCardData {
   titleId: string;
   title: string;
   posterUrl: string | null;
   watchedCount: number;
   totalCount: number;
-  // Season-scoped counterparts to watchedCount/totalCount, computed
-  // server-side for every media type (see the Home page): watched vs. total
-  // episodes within the season of `nextEpisode`, so the card can show
-  // "S3 · 5 / 8" instead of a series-wide total that spans every season. For
-  // anime rows the TMDB migration hasn't reached yet, every episode is still
-  // season 1, so this just reduces to "S1 · watchedCount / totalCount" — the
-  // fields stay non-null either way now that anime has real seasons too.
   seasonNumber: number | null;
   seasonWatchedCount: number | null;
   seasonTotalCount: number | null;
-  // The earliest aired-but-unwatched episode's id, or null when there isn't
-  // one — i.e. the finale-guard case ("All caught up").
+  // Null when there's nothing aired left to mark (finale guard).
   nextUnwatchedEpisodeId: string | null;
-  // Code + name for that same next-unwatched episode, e.g. "E5" / "Rescue
-  // Rukia" (anime) or "S3E7" / "The Reunion" (TV). Null when there's no next
-  // episode (caught up) or the episode has no name.
   nextEpisodeCode: string | null;
   nextEpisodeName: string | null;
-  // Anime-only canon/filler/mixed tag for the next-up episode, from
-  // animefillerlist.com — absent for TV or when there's no next episode/match.
   nextEpisodeFillerType?: FillerType;
-  // Overview/synopsis text for the next-unwatched episode, shown in an
-  // expandable panel on the card. Null when there's no next episode, or the
-  // episode has no stored overview (common for anime).
   nextEpisodeOverview: string | null;
-  // Air date (ISO) of the next-unwatched episode, or null if it has none.
   nextEpisodeAirDate: string | null;
-  // Which Currently Watching sub-section this card belongs in. The Home page
-  // only ever builds cards for titles that still have a next-unwatched
-  // episode (fully caught-up titles are dropped before reaching this
-  // component), so this is always "upnext" or "catchup", never a
-  // caught-up state.
   bucket: "upnext" | "catchup";
 }
 
-// Round check-circle mark button, matching the Bold prototype: 52px circle,
-// acid fill / ink border+shadow, flips to ink-fill/acid-check mid "punch",
-// pops a "+1 EP" badge that flies up out of the top, or — when there's
-// nothing to mark — sits muted with a clock glyph and shakes on tap.
+export interface HomeToast {
+  message: string;
+  onUndo?: () => void;
+}
+
+export const UNDO_MS = 4000;
+
+function formatAirDate(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// Round acid check button: punches on mark, pops a "+1 EP" stamp, shakes when caught up.
 function MarkButton({
   caughtUp,
   pending,
@@ -85,8 +77,7 @@ function MarkButton({
             ? { x: [0, -4, 4, 0] }
             : { scale: 1, x: 0 }
       }
-      // Re-trigger the animate prop's keyframes each time these counters
-      // change, even if the target values are structurally identical.
+      // Re-keying replays the keyframes even when the target values repeat.
       key={`${justMarked ? "punch" : "idle"}-${shakeCount}`}
       transition={
         justMarked
@@ -102,12 +93,8 @@ function MarkButton({
             : "cursor-pointer bg-acid shadow-[3px_3px_0_0_var(--color-ink)]"
       }`}
     >
-      {caughtUp ? (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-[22px] w-[22px] fill-none stroke-ink-soft"
-          strokeWidth={3.2}
-        >
+      {caughtUp && !justMarked ? (
+        <svg viewBox="0 0 24 24" className="h-[22px] w-[22px] fill-none stroke-ink-soft" strokeWidth={3.2}>
           <circle cx="12" cy="12" r="8" />
           <path d="M12 8v4l3 2" />
         </svg>
@@ -142,138 +129,42 @@ function MarkButton({
 export default function WatchingCard({
   data,
   priority = false,
+  notify,
 }: {
   data: WatchingCardData;
-  // Set for the first "Up Next" card only — Home is the app's landing
-  // screen and this stacked list's first card is the most likely LCP
-  // element in the whole app.
   priority?: boolean;
+  notify: (toast: HomeToast) => void;
 }) {
   const router = useRouter();
-  // "justMarked" is a purely optimistic flag: true from the moment of the
-  // tap (not the POST resolving) until either the server-refreshed `data`
-  // prop arrives or the background POST turns out to have failed. The Home
-  // page keys this component by
-  // `${titleId}:${watchedCount}:${nextUnwatchedEpisodeId}`, so once a
-  // successful refresh lands React remounts the card fresh (new key) — no
-  // effect needed to reset local state back to the real prop values.
+  // Optimistic: set on tap, cleared on failure; a successful refresh remounts the card (keyed on counts).
   const [justMarked, setJustMarked] = useState(false);
   const [pending, setPending] = useState(false);
   const [popCount, setPopCount] = useState(0);
   const [shakeCount, setShakeCount] = useState(0);
-  const [toast, setToast] = useState<{ message: string; withUndo: boolean } | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The in-flight mark-watched POST, if any. handleMark fires this in the
-  // background so the tap animation isn't gated on the network — handleUndo
-  // keeps a way to wait for it so a fast Undo can't race the DELETE ahead of
-  // the POST and leave the episode marked watched.
+  // Undo waits on this so a fast DELETE can't land before the POST.
   const postPromiseRef = useRef<Promise<Response> | null>(null);
 
   useEffect(() => {
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
 
-  const realCaughtUp = !data.nextUnwatchedEpisodeId;
-  const caughtUp = realCaughtUp || justMarked;
-  const displayedCount = data.watchedCount + (justMarked ? 1 : 0);
-  // Season-scoped display, TV only (seasonTotalCount is null for anime —
-  // see WatchingCardData). The optimistic +1 from marking an episode
-  // watched applies to the season count too, same as the overall one above.
+  const caughtUp = !data.nextUnwatchedEpisodeId || justMarked;
+  const bump = justMarked ? 1 : 0;
   const hasSeasonProgress = data.seasonTotalCount !== null && data.seasonWatchedCount !== null;
-  const displayedSeasonCount = hasSeasonProgress
-    ? (data.seasonWatchedCount as number) + (justMarked ? 1 : 0)
-    : displayedCount;
-  const displayedTotalCount = hasSeasonProgress
-    ? (data.seasonTotalCount as number)
-    : data.totalCount;
+  const watched = (hasSeasonProgress ? (data.seasonWatchedCount as number) : data.watchedCount) + bump;
+  const total = hasSeasonProgress ? (data.seasonTotalCount as number) : data.totalCount;
   const seasonLabel = hasSeasonProgress ? `S${data.seasonNumber}` : undefined;
-
-  function dismissToast() {
-    setToast(null);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-  }
-
-  function handleMark() {
-    if (!data.nextUnwatchedEpisodeId || pending || justMarked) return;
-    const episodeId = data.nextUnwatchedEpisodeId;
-
-    // All visual feedback fires synchronously on tap — the POST below runs
-    // in the background so the punch/stamp/toast never wait on the network.
-    setPending(true);
-    setJustMarked(true);
-    setPopCount((n) => n + 1);
-    setToast({ message: "Marked watched", withUndo: true });
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(dismissToast, 2500);
-
-    // Give the user a 2.5s Undo window before pulling fresh server state
-    // (which will hand back the next unwatched episode, if any).
-    refreshTimer.current = setTimeout(() => {
-      setToast(null);
-      router.refresh();
-    }, 2500);
-
-    const postPromise = fetch(`/api/episodes/${episodeId}/watch`, {
-      method: "POST",
-    });
-    postPromiseRef.current = postPromise;
-
-    postPromise
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to mark episode watched");
-      })
-      .catch(() => {
-        // The mark didn't stick — roll back the optimistic state and let
-        // the user know, rather than silently reverting. The button stays
-        // enabled (justMarked back to false) so they can just try again.
-        if (refreshTimer.current) clearTimeout(refreshTimer.current);
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        setJustMarked(false);
-        setToast({ message: "Couldn't mark watched — try again", withUndo: false });
-        toastTimer.current = setTimeout(dismissToast, 2500);
-      })
-      .finally(() => {
-        setPending(false);
-        postPromiseRef.current = null;
-      });
-  }
-
-  function handleCaughtUpTap() {
-    setShakeCount((n) => n + 1);
-    setToast({ message: "You're all caught up", withUndo: false });
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(dismissToast, 2500);
-  }
-
-  function handleButtonClick() {
-    if (caughtUp) {
-      handleCaughtUpTap();
-      return;
-    }
-    void handleMark();
-  }
+  const headline = data.nextEpisodeName ?? data.nextEpisodeCode ?? "";
 
   async function handleUndo() {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     const episodeId = data.nextUnwatchedEpisodeId;
-    dismissToast();
     if (!episodeId) return;
-
-    // If the mark POST is still in flight, wait for it to land before
-    // issuing the DELETE — otherwise the DELETE could resolve first and the
-    // POST's upsert would re-mark the episode watched right after Undo.
-    if (postPromiseRef.current) {
-      await postPromiseRef.current.catch(() => {
-        // POST failed on its own — nothing was marked, nothing to undo
-        // server-side, but local state below still needs resetting.
-      });
-    }
-
+    if (postPromiseRef.current) await postPromiseRef.current.catch(() => undefined);
     try {
       await fetch(`/api/episodes/${episodeId}/watch`, { method: "DELETE" });
     } finally {
@@ -282,19 +173,56 @@ export default function WatchingCard({
     }
   }
 
+  function handleMark() {
+    if (!data.nextUnwatchedEpisodeId || pending || justMarked) return;
+    const episodeId = data.nextUnwatchedEpisodeId;
+
+    setPending(true);
+    setJustMarked(true);
+    setPopCount((n) => n + 1);
+    notify({ message: `Marked ${data.nextEpisodeCode ?? "watched"}`, onUndo: () => void handleUndo() });
+
+    // Pull the next episode only once the Undo window has closed.
+    refreshTimer.current = setTimeout(() => router.refresh(), UNDO_MS);
+
+    const postPromise = fetch(`/api/episodes/${episodeId}/watch`, { method: "POST" });
+    postPromiseRef.current = postPromise;
+    postPromise
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to mark episode watched");
+      })
+      .catch(() => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current);
+        setJustMarked(false);
+        notify({ message: "Couldn't mark watched — try again" });
+      })
+      .finally(() => {
+        setPending(false);
+        postPromiseRef.current = null;
+      });
+  }
+
+  function handleButtonClick() {
+    if (caughtUp) {
+      setShakeCount((n) => n + 1);
+      notify({ message: "You're all caught up" });
+      return;
+    }
+    handleMark();
+  }
+
   return (
-    <div className="card-bold relative flex items-start gap-3 p-3">
+    <div className="flex items-center gap-3 border-2 border-ink bg-paper p-2.5">
       <Link
         href={`/title/${data.titleId}`}
-        className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel"
+        className="relative h-[114px] w-[76px] shrink-0 overflow-hidden border-2 border-ink bg-panel"
       >
         {data.posterUrl ? (
           <Image
-            // 64px thumb -> 128 (2x) for retina.
-            src={buildTmdbImageUrl(data.posterUrl, 128)}
+            src={buildTmdbImageUrl(data.posterUrl, 152)}
             alt={data.title}
             fill
-            sizes="64px"
+            sizes="76px"
             className="object-cover"
             priority={priority}
             unoptimized
@@ -302,52 +230,33 @@ export default function WatchingCard({
         ) : null}
       </Link>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 self-center">
-        <Link href={`/title/${data.titleId}`} className="block">
-          <h3 className="display truncate text-lg">{data.title}</h3>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <Link
+          href={`/title/${data.titleId}`}
+          className="truncate text-[10px] font-extrabold uppercase tracking-wide text-ink-soft"
+        >
+          {data.title}
         </Link>
-        {caughtUp ? (
-          <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-bold text-ink">
-            <span>All caught up</span>
-          </p>
+        {caughtUp && !justMarked ? (
+          <p className="display text-base leading-tight">All caught up</p>
         ) : (
-          <>
-            <button
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((prev) => !prev)}
-              className="flex min-w-0 items-center gap-1.5 text-left text-[13px] text-ink"
-            >
-              <span className="min-w-0 truncate">
-                <span className="font-extrabold">{data.nextEpisodeCode}</span>
-                {data.nextEpisodeName ? (
-                  <span className="font-semibold"> · {data.nextEpisodeName}</span>
-                ) : null}
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="flex min-w-0 flex-col gap-1 text-left"
+          >
+            <span className="display line-clamp-2 text-base leading-tight">{headline}</span>
+            {data.nextEpisodeName && (
+              <span className="flex items-center gap-1.5 text-[11px] font-extrabold">
+                {data.nextEpisodeCode}
+                {data.nextEpisodeFillerType && <FillerTag type={data.nextEpisodeFillerType} quiet />}
               </span>
-              {data.nextEpisodeFillerType && <FillerTag type={data.nextEpisodeFillerType} />}
-              <span
-                aria-hidden="true"
-                className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
-              >
-                ▾
-              </span>
-            </button>
-            {expanded && (
-              <div className="mt-1 border-t-[3px] border-ink pt-2">
-                <p className="text-xs leading-relaxed text-ink-soft">
-                  {data.nextEpisodeOverview && data.nextEpisodeOverview.trim().length > 0
-                    ? data.nextEpisodeOverview
-                    : "No description available."}
-                </p>
-              </div>
             )}
-          </>
+          </button>
         )}
-        <ProgressBar
-          watched={displayedSeasonCount}
-          total={displayedTotalCount}
-          seasonLabel={seasonLabel}
-        />
+        <div className="mt-0.5">
+          <ProgressBar watched={watched} total={total} seasonLabel={seasonLabel} />
+        </div>
       </div>
 
       <MarkButton
@@ -359,30 +268,38 @@ export default function WatchingCard({
         onClick={handleButtonClick}
       />
 
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.32, ease: [0.2, 0.9, 0.25, 1] }}
-            className="absolute -bottom-3 left-3 right-3 z-10 flex items-center justify-between gap-3 border-[3px] border-ink bg-ink px-3 py-2 shadow-[4px_4px_0_0_rgba(199,255,62,0.9)]"
-          >
-            <span className="text-xs font-bold uppercase tracking-wide text-paper">
-              {toast.message}
-            </span>
-            {toast.withUndo ? (
-              <button
-                type="button"
-                onClick={handleUndo}
-                className="shrink-0 border-2 border-acid px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-acid"
-              >
-                Undo
-              </button>
-            ) : null}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={data.title}>
+        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+          <span>
+            {data.nextEpisodeCode}
+            {data.nextEpisodeAirDate ? ` · Aired ${formatAirDate(data.nextEpisodeAirDate)}` : ""}
+          </span>
+          {data.nextEpisodeFillerType && <FillerTag type={data.nextEpisodeFillerType} quiet />}
+        </p>
+        <h3 className="display mt-1 text-xl leading-tight">{headline}</h3>
+        <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+          {data.nextEpisodeOverview?.trim() ? data.nextEpisodeOverview : "No description available."}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setSheetOpen(false);
+            handleMark();
+          }}
+          disabled={caughtUp}
+          className="hard-shadow-sm mt-4 w-full border-[3px] border-ink bg-acid px-3 py-2.5 text-sm font-extrabold uppercase tracking-wide active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-60"
+        >
+          Mark {data.nextEpisodeCode} watched
+        </button>
+        <div className="mt-4 border-2 border-ink">
+          <AccountRow
+            href={`/title/${data.titleId}`}
+            icon={<TvIcon className="h-5 w-5" />}
+            title="Open title"
+            subtitle={`${seasonLabel ? `${seasonLabel} · ` : ""}${watched} / ${total} watched`}
+          />
+        </div>
+      </BottomSheet>
     </div>
   );
 }

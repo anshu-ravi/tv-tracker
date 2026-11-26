@@ -2,7 +2,8 @@ import Link from "next/link";
 import Image from "next/image";
 import type { UpcomingItem } from "@/components/HomeTabs";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
-// (type-only import — no runtime dependency on HomeTabs, so no circularity.)
+import { compactEpisodeCode, upcomingDateLabel } from "@/lib/upcomingDate";
+import { rowClass } from "@/components/account/AccountList";
 
 const MEDIA_TYPE_LABEL: Record<UpcomingItem["mediaType"], string> = {
   tv: "TV",
@@ -10,47 +11,39 @@ const MEDIA_TYPE_LABEL: Record<UpcomingItem["mediaType"], string> = {
   movie: "Movie",
 };
 
-function daysUntilLabel(daysUntil: number): string {
-  if (daysUntil === 0) return "Airs today";
-  if (daysUntil === 1) return "Airs tomorrow";
-  return `Airs in ${daysUntil} days`;
-}
+// One Upcoming row: thumb, title, episode + media type, and the air date on the right.
+export default function UpcomingCard({ item, highlight = false }: { item: UpcomingItem; highlight?: boolean }) {
+  const date = upcomingDateLabel(item.airDate, item.daysUntil);
+  const subtitle = [item.episodeLabel ? compactEpisodeCode(item.episodeLabel) : null, MEDIA_TYPE_LABEL[item.mediaType]]
+    .filter(Boolean)
+    .join(" · ");
 
-// Bold-styled card for the Upcoming tab: poster thumb, title, media-type
-// stamp, optional episode label, and a prominent "airs in N days" line.
-// Purely presentational (no mark-watched interaction) — links through to
-// the title detail page like the rest of the app's poster cards.
-export default function UpcomingCard({ item }: { item: UpcomingItem }) {
   return (
-    <Link href={`/title/${item.titleId}`} className="card-bold flex items-center gap-3 p-3">
-      <div className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border-[3px] border-ink bg-panel">
+    <Link href={`/title/${item.titleId}`} className={`${rowClass} py-2.5`}>
+      <span className="relative h-[54px] w-9 shrink-0 overflow-hidden border-2 border-ink bg-panel">
         {item.posterUrl ? (
           <Image
-            // 64px thumb -> 128 (2x) for retina.
-            src={buildTmdbImageUrl(item.posterUrl, 128)}
-            alt={item.title}
+            src={buildTmdbImageUrl(item.posterUrl, 92)}
+            alt=""
             fill
-            sizes="64px"
+            sizes="36px"
             className="object-cover"
             unoptimized
           />
         ) : null}
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="stamp w-fit text-[10px]">{MEDIA_TYPE_LABEL[item.mediaType]}</span>
-        <h3 className="display truncate text-lg">{item.title}</h3>
-        {item.episodeLabel && (
-          <p className="truncate text-xs font-semibold text-ink-soft">{item.episodeLabel}</p>
-        )}
-        <span
-          className={`inline-block w-fit border-[2px] border-ink px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shadow-[2px_2px_0_0_var(--color-ink)] ${
-            item.daysUntil <= 1 ? "bg-acid text-ink" : "bg-panel text-ink"
-          }`}
-        >
-          {daysUntilLabel(item.daysUntil)}
-        </span>
-      </div>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold leading-snug">{item.title}</span>
+        <span className="block truncate text-[11px] text-ink-soft">{subtitle}</span>
+      </span>
+      <span
+        className={`shrink-0 text-right text-[11px] font-extrabold uppercase leading-tight ${
+          highlight ? "border-2 border-ink bg-acid px-1.5 py-0.5" : ""
+        }`}
+      >
+        <span className="block">{date.primary}</span>
+        {date.secondary && <span className="block font-semibold normal-case text-ink-soft">{date.secondary}</span>}
+      </span>
     </Link>
   );
 }
