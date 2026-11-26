@@ -9,10 +9,10 @@ import { useEffect } from "react";
 // around this, same as the app shell does for AppError.
 export default function LibraryError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
   useEffect(() => {
     console.error(error);
@@ -27,7 +27,7 @@ export default function LibraryError({
       </p>
       <button
         type="button"
-        onClick={() => reset()}
+        onClick={() => unstable_retry()}
         className="hard-shadow-sm border-[3px] border-ink bg-acid px-4 py-2 text-xs font-bold uppercase tracking-wide text-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
       >
         Try again
