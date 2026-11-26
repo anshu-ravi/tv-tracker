@@ -12,10 +12,12 @@ export const FILLER_TAG_CLASS: Record<FillerType, string> = {
   mixed: "bg-panel text-ink-soft",
 };
 
-export default function FillerTag({ type }: { type: FillerType }) {
+// `quiet` drops the acid fill on canon, for screens where acid belongs to another control.
+export default function FillerTag({ type, quiet = false }: { type: FillerType; quiet?: boolean }) {
+  const colour = quiet && type === "canon" ? "bg-paper text-ink" : FILLER_TAG_CLASS[type];
   return (
     <span
-      className={`shrink-0 border-2 border-ink px-1 py-0.5 text-[8px] font-bold uppercase leading-none ${FILLER_TAG_CLASS[type]}`}
+      className={`shrink-0 border-2 border-ink px-1 py-0.5 text-[8px] font-bold uppercase leading-none ${colour}`}
     >
       {type}
     </span>
