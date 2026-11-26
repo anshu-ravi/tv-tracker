@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   friendStatusLabel,
+  friendsSummary,
   lovedNote,
   toLovedResult,
   type FriendOnTitleRow,
@@ -68,5 +69,25 @@ describe("toLovedResult", () => {
       posterUrl: "/p.jpg",
       note: "Andres ★ 4.5",
     });
+  });
+});
+
+describe("friendsSummary", () => {
+  it("names a single friend with their status and own rating", () => {
+    const summary = friendsSummary([onTitle({ status: "watching", watched_count: 3, rating: "4.5" })], false);
+    expect(summary).toEqual({ text: "Fagotinho · Watching · 3 eps", rating: 4.5 });
+  });
+
+  it("counts several friends and averages only the rated ones", () => {
+    const rows = [
+      onTitle({ user_id: "a", rating: 4 }),
+      onTitle({ user_id: "b", rating: "3.5" }),
+      onTitle({ user_id: "c", rating: null }),
+    ];
+    expect(friendsSummary(rows, false)).toEqual({ text: "3 friends", rating: 3.8 });
+  });
+
+  it("returns a null rating when nobody rated", () => {
+    expect(friendsSummary([onTitle({ rating: null }), onTitle({ user_id: "b", rating: null })], true).rating).toBeNull();
   });
 });

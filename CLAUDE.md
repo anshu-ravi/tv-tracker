@@ -90,6 +90,8 @@ Bottom-tab PWA with **4 icon tabs**: **Home** (currently-watching cards, split i
 
 Locked neo-brutalist direction (do not drift toward the rejected glass/cinematic look): cream/paper base (~`#F3EEDF`), near-black ink, **acid-green accent** (~`#C7FF3E`), oversized heavy uppercase display type, hard 3px borders with offset hard-drop shadows, a rotated sticker-style stamp, faint hairline grid texture. The mark-watched control is a decisive punch/scale with a "+1 EP" stamp and a 4s Undo toast; guard finales ("All caught up", disable — never render "null"). Committed to a light theme (no dark-mode variant).
 
+**Hierarchy rule:** interactive controls get the 3px border + hard shadow; informational elements (rating strip, cast cards, chips) get a 2px border and no shadow. Acid fill marks one thing per zone — on the title page, only the status button. Applied to the title and preview pages so far; other pages adopt it as they are touched.
+
 ## Backend & future Python
 
 There is **no separate backend service**. The "backend" is Supabase (Postgres +

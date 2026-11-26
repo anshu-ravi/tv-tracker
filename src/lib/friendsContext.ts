@@ -60,3 +60,17 @@ export function toLovedResult(row: FriendsLovedRow): SearchResult {
     note: lovedNote(row),
   };
 }
+
+/** One-line summary for the title page: "Dad · Watching · 3 eps" or "2 friends". */
+export function friendsSummary(
+  rows: FriendOnTitleRow[],
+  isMovie: boolean,
+): { text: string; rating: number | null } {
+  const ratings = rows.map((r) => toRating(r.rating)).filter((r): r is number => r !== null);
+  const rating = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null;
+  if (rows.length === 1) {
+    const [row] = rows;
+    return { text: `${row.display_name || row.handle} · ${friendStatusLabel(row, isMovie)}`, rating };
+  }
+  return { text: `${rows.length} friends`, rating };
+}

@@ -1,15 +1,15 @@
 import { notFound, redirect } from "next/navigation";
-import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Suspense } from "react";
-import WhereToWatch from "@/components/WhereToWatch";
+import WhereToWatch, { WhereToWatchFallback } from "@/components/WhereToWatch";
 import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getMovieTitle, getTvCredits, getTvTitle } from "@/lib/tmdb";
 import { getAnimeFillerData, type EpisodeFiller } from "@/lib/animefillerlist";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
-import BackButton from "@/components/BackButton";
+import CastRow from "@/components/CastRow";
 import PreviewEpisodeList, { type PreviewSeasonGroup } from "@/components/PreviewEpisodeList";
-import RatingBadges from "@/components/RatingBadges";
+import RatingsStrip from "@/components/RatingsStrip";
+import TitleHero from "@/components/TitleHero";
 import SimilarRail from "@/components/SimilarRail";
 import TitleActionBar from "@/components/TitleActionBar";
 import { buildTmdbImageUrl } from "@/lib/tmdbImage";
@@ -172,111 +172,50 @@ export default async function PreviewPage({
   }));
 
   const year = title.firstAirDate ? title.firstAirDate.slice(0, 4) : null;
+  const meta = [
+    year,
+    mediaType === "movie" ? (runtimeMinutes ? `${runtimeMinutes} min` : null) : title.isRunning ? "Running" : "Ended",
+    mediaType === "movie" ? null : mediaType === "anime" ? "Anime" : "TV",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="pb-10">
-      {title.backdropUrl ? (
-        <div className="relative">
-          <div className="relative aspect-[16/9] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
-            <Image
-              // Full-bleed hero; 750 (~375px mobile viewport x2 retina)
-              // keeps the existing w780 bucket lib/tmdb.ts already built
-              // this URL at rather than upsizing further.
-              src={buildTmdbImageUrl(title.backdropUrl, 750)}
-              alt=""
-              fill
-              sizes="100vw"
-              className="object-cover"
-              priority
-              unoptimized
-            />
-          </div>
-          <div className="absolute left-4 top-4">
-            <BackButton />
-          </div>
-        </div>
-      ) : (
-        <div className="px-4 pt-4">
-          <BackButton />
-        </div>
-      )}
+      <TitleHero
+        title={title.title}
+        meta={meta}
+        // 750 covers a ~375px viewport at 2x; 192 is the 96px poster at 2x.
+        backdropSrc={title.backdropUrl ? buildTmdbImageUrl(title.backdropUrl, 750) : null}
+        posterSrc={title.posterUrl ? buildTmdbImageUrl(title.posterUrl, 192) : null}
+        unoptimized
+      />
 
-      <div className="flex gap-4 px-4 pt-4">
-        <div className="flex w-24 shrink-0 flex-col gap-2">
-          <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
-            {title.posterUrl ? (
-              <Image
-                // 96px box -> 192 (2x) for retina.
-                src={buildTmdbImageUrl(title.posterUrl, 192)}
-                alt={title.title}
-                fill
-                sizes="96px"
-                className="object-cover"
-                unoptimized
-              />
-            ) : null}
-          </div>
-          <Suspense fallback={<div className="h-11 w-11 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
-            <WhereToWatch sourceId={sourceId} mediaType={mediaType} settings={watchSettings} />
-          </Suspense>
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h1 className="display text-2xl leading-tight">{title.title}</h1>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-            {mediaType === "movie"
-              ? [year, runtimeMinutes ? `${runtimeMinutes} min` : null]
-                  .filter(Boolean)
-                  .join(" · ")
-              : [year, title.isRunning ? "Running" : "Ended"].filter(Boolean).join(" · ")}
-          </p>
-          <TitleActionBar source={dataSource} sourceId={sourceId} mediaType={mediaType} />          <RatingBadges ratings={ratings} />
-        </div>
+      <div className="px-4 pt-4">
+        <TitleActionBar source={dataSource} sourceId={sourceId} mediaType={mediaType} />
       </div>
 
-      {title.overview && (
-        <p className="px-4 pt-4 text-sm leading-relaxed text-ink-soft">{title.overview}</p>
-      )}
+      <RatingsStrip ratings={ratings}>
+        <Suspense fallback={<WhereToWatchFallback />}>
+          <WhereToWatch sourceId={sourceId} mediaType={mediaType} settings={watchSettings} />
+        </Suspense>
+      </RatingsStrip>
+
+      {title.overview && <p className="px-4 pt-4 text-sm leading-relaxed text-ink-soft">{title.overview}</p>}
 
       {credits.creators.length > 0 && (
-        <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+        <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">
           {mediaType === "movie" ? "Directed by" : "Created by"} {credits.creators.join(", ")}
         </p>
       )}
 
-      {credits.cast.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
-          {credits.cast.map((member, i) => (
-            <div key={`${member.name}-${i}`} className="card-bold w-20 shrink-0 overflow-hidden p-0">
-              <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
-                {member.imageUrl ? (
-                  <Image
-                    // 80px box -> 160 (2x) for retina.
-                    src={buildTmdbImageUrl(member.imageUrl, 160)}
-                    alt={member.name}
-                    fill
-                    sizes="80px"
-                    className="object-cover"
-                    unoptimized
-                  />
-                ) : null}
-              </div>
-              <p className="truncate px-1 py-0.5 text-[9px] font-bold uppercase">
-                {member.name}
-              </p>
-              {member.role && (
-                <p className="truncate px-1 pb-1 text-[8px] text-ink-soft">{member.role}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <CastRow cast={credits.cast} unoptimized />
 
       {mediaType !== "movie" && (
-        <div className="mt-6 px-4">
+        <section className="mt-6 px-4">
           <h2 className="display text-xl">Episodes</h2>
           <PreviewEpisodeList seasons={seasons} />
-        </div>
+        </section>
       )}
 
       <div className="mt-6 px-4">

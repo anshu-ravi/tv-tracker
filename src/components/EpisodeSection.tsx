@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useWatchedEpisodes } from "@/components/WatchedEpisodes";
 import EpisodeTick from "@/components/EpisodeTick";
 import SeasonControls from "@/components/SeasonControls";
 import FillerTag, { type FillerType } from "@/components/FillerTag";
@@ -27,36 +28,25 @@ export interface SeasonGroup {
   episodes: SeasonEpisode[];
 }
 
-// Owns the one source of truth for "which episodes are watched" across the
-// whole episode list, plus which season is selected. Everything below (the
-// season dropdown, the mark-season button, every tick) is a controlled
-// child driven from this state — that's what makes "mark season done" tick
-// every checkbox instantly instead of waiting on a router.refresh() that a
-// child's own useState would ignore.
+// Season picker, mark-season control and episode ticks, all driven by the
+// shared WatchedEpisodesProvider state so bulk and single marks stay in sync.
 export default function EpisodeSection({
   titleId,
   seasons,
-  initialWatchedIds,
 }: {
   titleId: string;
   seasons: SeasonGroup[];
-  initialWatchedIds: string[];
 }) {
   const router = useRouter();
-  const [watched, setWatched] = useState<Set<string>>(
-    () => new Set(initialWatchedIds),
-  );
+  const { watched, pendingEpisodeIds, toggleEpisode, setWatched } = useWatchedEpisodes();
   const [seasonPending, setSeasonPending] = useState(false);
-  const [pendingEpisodeIds, setPendingEpisodeIds] = useState<Set<string>>(
-    () => new Set(),
-  );
   // Only one episode's overview panel is open at a time — clicking the open
   // row's text block closes it, clicking another row's swaps to that one.
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const defaultSeason = useMemo(() => {
     const firstUnfinished = seasons.find((s) =>
-      s.episodes.some((ep) => !initialWatchedIds.includes(ep.id)),
+      s.episodes.some((ep) => !watched.has(ep.id)),
     );
     return (firstUnfinished ?? seasons[0])?.seasonNumber ?? null;
     // Only compute the initial default once — after that the dropdown is
@@ -85,43 +75,6 @@ export default function EpisodeSection({
     list.scrollTop = row ? Math.max(0, row.offsetTop - row.offsetHeight) : 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSeason?.seasonNumber]);
-
-  async function toggleEpisode(episodeId: string) {
-    if (pendingEpisodeIds.has(episodeId)) return;
-    const willWatch = !watched.has(episodeId);
-
-    setWatched((prev) => {
-      const next = new Set(prev);
-      if (willWatch) next.add(episodeId);
-      else next.delete(episodeId);
-      return next;
-    });
-    setPendingEpisodeIds((prev) => new Set(prev).add(episodeId));
-
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/watch`, {
-        method: willWatch ? "POST" : "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to update episode");
-      // A tick can move the title's status server-side; pull it into the action bar.
-      router.refresh();
-    } catch {
-      // Roll back the optimistic flip.
-      setWatched((prev) => {
-        const next = new Set(prev);
-        if (willWatch) next.delete(episodeId);
-        else next.add(episodeId);
-        return next;
-      });
-      router.refresh();
-    } finally {
-      setPendingEpisodeIds((prev) => {
-        const next = new Set(prev);
-        next.delete(episodeId);
-        return next;
-      });
-    }
-  }
 
   async function toggleSeason() {
     if (seasonPending || !activeSeason) return;

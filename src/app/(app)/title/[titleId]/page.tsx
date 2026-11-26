@@ -1,20 +1,21 @@
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Suspense } from "react";
-import WhereToWatch from "@/components/WhereToWatch";
-import MediaTypeToggle from "@/components/MediaTypeToggle";
+import WhereToWatch, { WhereToWatchFallback } from "@/components/WhereToWatch";
 import { parseWatchSettings } from "@/lib/watchSettings";
 import { getMovieCredits, getTvCredits } from "@/lib/tmdb";
 import { getMovieRatings, getTvRatings } from "@/lib/ratings";
-import BackButton from "@/components/BackButton";
+import CastRow from "@/components/CastRow";
 import EpisodeSection, { type SeasonGroup } from "@/components/EpisodeSection";
-import RatingBadges from "@/components/RatingBadges";
+import RatingsStrip from "@/components/RatingsStrip";
+import TitleHero from "@/components/TitleHero";
+import UpNextCard, { type UpNextEpisode } from "@/components/UpNextCard";
+import { WatchedEpisodesProvider } from "@/components/WatchedEpisodes";
 import SimilarRail from "@/components/SimilarRail";
 import FriendsOnTitle from "@/components/FriendsOnTitle";
 import type { FriendOnTitleRow } from "@/lib/friendsContext";
 import TitleActionBar from "@/components/TitleActionBar";
-import UserRatingControl from "@/components/UserRatingControl";
+import UserRatingCell from "@/components/UserRatingCell";
 import type { DataSource, MediaType, TitleCredits, TitleRatings, WatchStatus } from "@/lib/types";
 
 // --- Row shapes for the untyped Supabase client -----------------------------
@@ -237,165 +238,81 @@ export default async function TitleDetailPage({
 
   const year = title.first_air_date ? title.first_air_date.slice(0, 4) : null;
   const nextAirLabel = formatDate(title.next_episode_air_date);
+  const typeLabel = isMovie ? null : title.media_type === "anime" ? "Anime" : "TV";
+  const meta = [
+    year,
+    isMovie ? (movieRuntime ? `${movieRuntime} min` : null) : title.is_running ? "Running" : "Ended",
+    typeLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const today = new Date().toISOString().slice(0, 10);
+  const upNextEpisodes: UpNextEpisode[] = isMovie
+    ? []
+    : episodes.map((e) => ({
+        id: e.id,
+        code: `S${e.season_number} · E${e.episode_number}`,
+        name: resolveEpisodeName(e.name, e.filler_name),
+        aired: !!e.air_date && e.air_date <= today,
+      }));
 
   return (
-    <div className="pb-10">
-      {title.backdrop_url ? (
-        // Float over the backdrop image.
-        <div className="relative">
-          <div className="relative aspect-[16/9] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
-            <Image
-              src={title.backdrop_url}
-              alt=""
-              fill
-              sizes="100vw"
-              className="object-cover"
-              priority
-            />
-          </div>
-          <div className="absolute left-4 top-4">
-            <BackButton />
-          </div>
-        </div>
-      ) : (
-        // No backdrop to sit over — render in normal flow instead.
+    <WatchedEpisodesProvider initialWatchedIds={Array.from(watchedIds)}>
+      <div className="pb-10">
+        <TitleHero title={title.title} meta={meta} backdropSrc={title.backdrop_url} posterSrc={title.poster_url} />
+
         <div className="px-4 pt-4">
-          <BackButton />
-        </div>
-      )}
-
-      <div className="flex gap-4 px-4 pt-4">
-        <div className="flex w-24 shrink-0 flex-col gap-2">
-          <div className="relative h-36 w-24 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
-            {title.poster_url ? (
-              <Image
-                src={title.poster_url}
-                alt={title.title}
-                fill
-                sizes="96px"
-                className="object-cover"
-              />
-            ) : null}
-          </div>
-          {title.source === "tmdb" && (
-            <Suspense fallback={<div className="h-11 w-11 animate-pulse rounded-[8px] border-2 border-ink bg-panel" />}>
-              <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
-            </Suspense>
-          )}
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h1 className="display text-2xl leading-tight">{title.title}</h1>
-          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-            {year && <span>{year}</span>}
-            {isMovie ? (
-              // A movie's is_running is always false (see the field-name-diff
-              // comment above getMovieTitle in lib/tmdb.ts) — the
-              // Running/Ended/Caught-up language below is TV-specific, so a
-              // movie shows its runtime here instead.
-              movieRuntime && <span>{movieRuntime} min</span>
-            ) : /* Below "completed", swap the plain running/ended text for the
-                same distinction the poster badge makes (see PosterCard):
-                "Ended" (genuinely over) vs. "Caught up" (current, but the
-                show will get more episodes). For any other status the plain
-                "Running"/"Ended" text is enough — a watchlist/watching
-                title is neither "ended" nor "caught up" yet. */
-            status === "completed" ? (
-              <span
-                className={`inline-block -rotate-3 border-2 border-ink px-1.5 py-0.5 text-[10px] font-bold normal-case tracking-normal ${
-                  title.is_running ? "bg-acid text-ink" : "bg-ink text-paper"
-                }`}
-              >
-                {title.is_running ? "Caught up" : "Ended"}
-              </span>
-            ) : (
-              <span>{title.is_running ? "Running" : "Ended"}</span>
-            )}
-            {title.media_type !== "movie" && title.source === "tmdb" && (
-              <MediaTypeToggle titleId={title.id} initial={title.media_type} />
-            )}
-          </p>
           <TitleActionBar
             source={title.source}
             sourceId={title.source_id}
             mediaType={title.media_type}
             titleId={title.id}
             initialStatus={status ?? undefined}
+            isRunning={title.is_running}
           />
-          <RatingBadges ratings={ratings} />
-          {status && <UserRatingControl titleId={title.id} initialRating={rating} />}
-          {nextAirLabel && (
-            <p className="text-xs text-ink-soft">
-              Next: {title.next_episode_label ?? "Episode"} · {nextAirLabel}
-            </p>
+        </div>
+
+        <RatingsStrip ratings={ratings}>
+          {title.source === "tmdb" && (
+            <Suspense fallback={<WhereToWatchFallback />}>
+              <WhereToWatch sourceId={title.source_id} mediaType={title.media_type} settings={watchSettings} />
+            </Suspense>
           )}
-        </div>
-      </div>
+          {status && <UserRatingCell titleId={title.id} title={title.title} initialRating={rating} />}
+        </RatingsStrip>
 
-      <FriendsOnTitle rows={friendsOnTitle} isMovie={isMovie} />
-
-      {title.overview && (
-        <p className="px-4 pt-4 text-sm leading-relaxed text-ink-soft">
-          {title.overview}
-        </p>
-      )}
-
-      {credits.creators.length > 0 && (
-        <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-          {isMovie ? "Directed by" : "Created by"} {credits.creators.join(", ")}
-        </p>
-      )}
-
-      {credits.cast.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
-          {credits.cast.map((member, i) => (
-            <div
-              key={`${member.name}-${i}`}
-              className="card-bold w-20 shrink-0 overflow-hidden p-0"
-            >
-              <div className="relative aspect-[2/3] w-full overflow-hidden border-b-[3px] border-ink bg-panel">
-                {member.imageUrl ? (
-                  <Image
-                    src={member.imageUrl}
-                    alt={member.name}
-                    fill
-                    sizes="80px"
-                    className="object-cover"
-                  />
-                ) : null}
-              </div>
-              <p className="truncate px-1 py-0.5 text-[9px] font-bold uppercase">
-                {member.name}
-              </p>
-              {member.role && (
-                <p className="truncate px-1 pb-1 text-[8px] text-ink-soft">
-                  {member.role}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!isMovie && (
-        <div className="mt-6 px-4">
-          <h2 className="display text-xl">Episodes</h2>
-
-          <EpisodeSection
-            titleId={title.id}
-            seasons={seasons}
-            initialWatchedIds={Array.from(watchedIds)}
+        {!isMovie && (
+          <UpNextCard
+            status={status}
+            episodes={upNextEpisodes}
+            upcoming={nextAirLabel ? { label: title.next_episode_label ?? "Episode", date: nextAirLabel } : null}
           />
-        </div>
-      )}
+        )}
 
-      <div className="mt-6 px-4">
-        <SimilarRail
-          source={title.source}
-          sourceId={title.source_id}
-          mediaType={title.media_type}
-        />
+        <FriendsOnTitle rows={friendsOnTitle} isMovie={isMovie} />
+
+        {title.overview && <p className="px-4 pt-4 text-sm leading-relaxed text-ink-soft">{title.overview}</p>}
+
+        {credits.creators.length > 0 && (
+          <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">
+            {isMovie ? "Directed by" : "Created by"} {credits.creators.join(", ")}
+          </p>
+        )}
+
+        <CastRow cast={credits.cast} />
+
+        {!isMovie && (
+          <section className="mt-6 px-4">
+            <h2 className="display text-xl">Episodes</h2>
+            <EpisodeSection titleId={title.id} seasons={seasons} />
+          </section>
+        )}
+
+        <div className="mt-6 px-4">
+          <SimilarRail source={title.source} sourceId={title.source_id} mediaType={title.media_type} />
+        </div>
       </div>
-    </div>
+    </WatchedEpisodesProvider>
   );
 }
