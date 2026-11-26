@@ -31,6 +31,11 @@ Things that were tried, measured or ruled out, kept here so nobody retries them 
 - **Handles are generated from the display name, never the email**, so a new account's handle doesn't leak its email address.
 - **`supabase db push` is unsafe here.** About a dozen migrations are recorded remotely under different versions from their local files, so a push treats old files as unapplied. Apply a single file with `supabase db query --linked -f <file>` and record it with `supabase migration repair --status applied <version>`, or use the MCP `apply_migration` tool.
 
+## Fresh-token 401s
+
+- **The server Supabase client retries a request once, after 1s, when PostgREST answers 401 `PGRST303`.** After more than an hour idle, the proxy refreshes the session and the page's first queries use a JWT minted a second earlier; PostgREST occasionally rejects such a token (`PGRST303`, claims validation, likely clock skew against Auth), while the same token is accepted milliseconds later. Seen on 2026-11-26 at 10:09 and 11:14 UTC, once on `get_home_payload` (Home error screen) and once on the friend-request badge. Only `PGRST303` is retried, so a genuinely expired or invalid token still fails. The wrapper is `src/lib/supabase/retryFetch.ts`.
+- **Error boundaries use `unstable_retry()`, not `reset()`.** `reset()` re-renders from the RSC payload already on the client, so a server-side error re-throws immediately and Try Again looks dead; `unstable_retry()` re-fetches the segment first.
+
 ## Closed, don't reopen without a new reason
 
 - **Avatar icon picker.** A bundled-SVG picker replacing photo upload was built and rejected on sight. Photo upload stays.
