@@ -35,7 +35,7 @@ function Poster({ item, width, sizes }: { item: UpcomingItem; width: number; siz
   ) : null;
 }
 
-// This-week carousel tile: large poster with the air date stamped on it, title and episode below.
+// Next-7-days carousel tile: large poster with the air date stamped on it, title and episode below.
 export function UpcomingTile({ item }: { item: UpcomingItem }) {
   const date = upcomingDateLabel(item.airDate, item.daysUntil);
   const stamp = [date.primary, date.secondary].filter(Boolean).join(" ");

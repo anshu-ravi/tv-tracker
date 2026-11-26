@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import WatchingCard, { UNDO_MS, type HomeToast, type WatchingCardData } from "@/components/WatchingCard";
 import UpcomingCard, { UpcomingTile } from "@/components/UpcomingCard";
 import CatchUpCarousel from "@/components/CatchUpCarousel";
-import { THIS_WEEK_DAYS } from "@/lib/upcomingDate";
+import { SOON_DAYS } from "@/lib/upcomingDate";
 import type { MediaType } from "@/lib/types";
 
 // A title with a known future air date: a running show's next episode or an unreleased premiere.
@@ -71,8 +71,8 @@ export default function HomeTabs({
 
   const upNext = watching.filter((card) => card.bucket === "upnext");
   const catchUp = watching.filter((card) => card.bucket === "catchup");
-  const thisWeek = upcoming.filter((item) => item.daysUntil < THIS_WEEK_DAYS);
-  const later = upcoming.filter((item) => item.daysUntil >= THIS_WEEK_DAYS);
+  const soon = upcoming.filter((item) => item.daysUntil < SOON_DAYS);
+  const later = upcoming.filter((item) => item.daysUntil >= SOON_DAYS);
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: "watching", label: "Watching", count: watching.length },
@@ -145,12 +145,12 @@ export default function HomeTabs({
         </p>
       ) : (
         <div className="flex flex-col gap-6">
-          {thisWeek.length > 0 && (
+          {soon.length > 0 && (
             <section>
-              <h2 className={sectionLabel}>This week</h2>
+              <h2 className={sectionLabel}>Next 7 days</h2>
               <div className="-mx-4 overflow-x-auto px-4 pb-1">
                 <div className="flex w-max snap-x snap-mandatory gap-3">
-                  {thisWeek.map((item) => (
+                  {soon.map((item) => (
                     <UpcomingTile key={item.titleId} item={item} />
                   ))}
                 </div>
