@@ -103,6 +103,8 @@ export default function EpisodeSection({
         method: willWatch ? "POST" : "DELETE",
       });
       if (!res.ok) throw new Error("Failed to update episode");
+      // A tick can move the title's status server-side; pull it into the action bar.
+      router.refresh();
     } catch {
       // Roll back the optimistic flip.
       setWatched((prev) => {
@@ -145,6 +147,7 @@ export default function EpisodeSection({
         { method: markAsWatched ? "POST" : "DELETE" },
       );
       if (!res.ok) throw new Error("Failed to update season");
+      router.refresh();
     } catch {
       setWatched(previousWatched); // roll back the whole-season optimistic update
       router.refresh();
