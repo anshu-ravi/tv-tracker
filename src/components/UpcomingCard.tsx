@@ -35,15 +35,15 @@ function Poster({ item, width, sizes }: { item: UpcomingItem; width: number; siz
   ) : null;
 }
 
-// This-week tile: large poster with the air date stamped on it, title and episode below.
+// This-week carousel tile: large poster with the air date stamped on it, title and episode below.
 export function UpcomingTile({ item }: { item: UpcomingItem }) {
   const date = upcomingDateLabel(item.airDate, item.daysUntil);
   const stamp = [date.primary, date.secondary].filter(Boolean).join(" ");
 
   return (
-    <Link href={`/title/${item.titleId}`} className="flex min-w-0 flex-col gap-1">
+    <Link href={`/title/${item.titleId}`} className="flex w-40 shrink-0 snap-start flex-col gap-1">
       <span className="relative aspect-[2/3] w-full overflow-hidden rounded-md border-2 border-ink bg-panel">
-        <Poster item={item} width={342} sizes="50vw" />
+        <Poster item={item} width={320} sizes="160px" />
         <span
           className={`absolute left-1.5 top-1.5 border-2 border-ink px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none ${
             isImminent(item) ? "bg-acid" : "bg-paper"
