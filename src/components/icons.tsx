@@ -229,3 +229,50 @@ export function ChevronRightIcon({ className }: { className?: string }) {
     </StrokeIcon>
   );
 }
+
+// Account page row icons.
+
+export function StarIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
+    </StrokeIcon>
+  );
+}
+
+export function CardsIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <rect x="6" y="7" width="13" height="13" rx="1" />
+      <path d="M4 16V5a1 1 0 0 1 1-1h11" />
+    </StrokeIcon>
+  );
+}
+
+export function UsersIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <circle cx="9" cy="8.5" r="3.25" />
+      <path d="M3 19.5c.9-3.3 3.2-5 6-5s5.1 1.7 6 5" />
+      <path d="M16 5.5a3 3 0 0 1 0 6M18.5 14.8c1.3.8 2.1 2.4 2.5 4.7" />
+    </StrokeIcon>
+  );
+}
+
+export function TvIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <rect x="3" y="6.5" width="18" height="12.5" rx="1" />
+      <path d="m8.5 3 3.5 3.5L15.5 3" />
+    </StrokeIcon>
+  );
+}
+
+export function CameraIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z" />
+      <circle cx="12" cy="13" r="3.25" />
+    </StrokeIcon>
+  );
+}
