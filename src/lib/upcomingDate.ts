@@ -1,6 +1,6 @@
 // Date labels and grouping for the Home Upcoming tab.
 
-export const THIS_WEEK_DAYS = 7;
+export const SOON_DAYS = 7;
 const FAR_DAYS = 180;
 
 function fmt(iso: string, options: Intl.DateTimeFormatOptions): string {
@@ -11,7 +11,7 @@ function fmt(iso: string, options: Intl.DateTimeFormatOptions): string {
 export function upcomingDateLabel(airDate: string, daysUntil: number): { primary: string; secondary: string | null } {
   if (daysUntil <= 0) return { primary: "Today", secondary: null };
   if (daysUntil === 1) return { primary: "Tomorrow", secondary: null };
-  if (daysUntil < THIS_WEEK_DAYS) {
+  if (daysUntil < SOON_DAYS) {
     return { primary: fmt(airDate, { weekday: "short" }), secondary: fmt(airDate, { day: "numeric", month: "short" }) };
   }
   const primary =
