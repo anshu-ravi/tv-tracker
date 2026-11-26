@@ -1,24 +1,33 @@
 import Link from "next/link";
 import ProviderLogo from "@/components/ProviderLogo";
+import { StripCell } from "@/components/RatingsStrip";
 import { getTitleStreamingProviders } from "@/lib/tmdb";
 import { splitByMine, type WatchProvider, type WatchSettings } from "@/lib/watchSettings";
 import type { MediaType } from "@/lib/types";
 
-const note = "text-[9px] font-bold uppercase leading-tight tracking-wide text-ink-soft";
+const quiet = "text-[11px] font-bold uppercase leading-tight text-ink-soft";
 
-function Logos({ providers, size }: { providers: WatchProvider[]; size: number }) {
+function FirstLogo({ providers }: { providers: WatchProvider[] }) {
+  const [first] = providers;
   return (
-    <div className="flex flex-wrap gap-2">
-      {providers.map((p) => (
-        <span key={p.id} title={p.name}>
-          <ProviderLogo provider={p} size={size} />
-        </span>
-      ))}
-    </div>
+    <>
+      <span title={providers.map((p) => p.name).join(", ")}>
+        <ProviderLogo provider={first} size={22} />
+      </span>
+      {providers.length > 1 && <span className="text-xs">+{providers.length - 1}</span>}
+    </>
   );
 }
 
-// Logos of the subscription services carrying a title, filtered to the user's own; sits under the poster.
+export function WhereToWatchFallback() {
+  return (
+    <StripCell label="On">
+      <span className="h-[22px] w-[22px] animate-pulse rounded-[6px] border-2 border-ink bg-panel" />
+    </StripCell>
+  );
+}
+
+// Ratings-strip cell naming the subscription services that carry a title, preferring the user's own.
 export default async function WhereToWatch({
   sourceId,
   mediaType,
@@ -30,9 +39,11 @@ export default async function WhereToWatch({
 }) {
   if (!settings.region) {
     return (
-      <Link href="/account/streaming" className={`${note} underline`}>
-        Set country for where to watch →
-      </Link>
+      <StripCell label="Watch">
+        <Link href="/account/streaming" className={`${quiet} underline`}>
+          Set country
+        </Link>
+      </StripCell>
     );
   }
 
@@ -45,7 +56,11 @@ export default async function WhereToWatch({
   }
 
   if (providers.length === 0) {
-    return <p className={note}>Not streaming in {settings.region}</p>;
+    return (
+      <StripCell label="Watch">
+        <span className={quiet}>Not streaming</span>
+      </StripCell>
+    );
   }
 
   const hasPicks = settings.providerIds.length > 0;
@@ -53,21 +68,15 @@ export default async function WhereToWatch({
 
   if (hasPicks && mine.length === 0) {
     return (
-      <div className="flex flex-col gap-1.5">
-        <p className={note}>Not on yours</p>
-        <Logos providers={others} size={44} />
-      </div>
+      <StripCell label="Not on yours">
+        <FirstLogo providers={others} />
+      </StripCell>
     );
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <Logos providers={hasPicks ? mine : providers} size={44} />
-      {!hasPicks && (
-        <Link href="/account/streaming" className={`${note} underline`}>
-          Pick yours →
-        </Link>
-      )}
-    </div>
+    <StripCell label="On">
+      <FirstLogo providers={hasPicks ? mine : providers} />
+    </StripCell>
   );
 }
