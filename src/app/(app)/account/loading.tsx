@@ -14,7 +14,7 @@ export default function AccountLoading() {
       </div>
       <StatsStripFallback />
       <div className="mt-11 h-[200px] animate-pulse border-2 border-ink bg-panel" />
-      <div className="mt-11 h-[134px] animate-pulse border-2 border-ink bg-panel" />
+      <div className="mt-11 h-[200px] animate-pulse border-2 border-ink bg-panel" />
     </div>
   );
 }

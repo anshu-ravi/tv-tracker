@@ -6,8 +6,8 @@ import ProfileHeader from "@/components/ProfileHeader";
 import RefreshTrackedButton, { type LastRefreshRun } from "@/components/RefreshTrackedButton";
 import StatsStrip, { StatsStripFallback } from "@/components/account/StatsStrip";
 import StreamingSubtitle from "@/components/account/StreamingSubtitle";
-import { AccountGroup, AccountRow } from "@/components/account/AccountList";
-import { CardsIcon, StarIcon, TvIcon, UsersIcon } from "@/components/icons";
+import { AccountGroup, AccountRow, RowBody, rowClass } from "@/components/account/AccountList";
+import { CardsIcon, LogOutIcon, StarIcon, TvIcon, UsersIcon } from "@/components/icons";
 import { parseWatchSettings } from "@/lib/watchSettings";
 
 // Account tab: profile, headline stats, and links to the per-user sub-pages.
@@ -101,21 +101,12 @@ export default async function AccountPage() {
           }
         />
         <RefreshTrackedButton lastRun={lastRun} />
-      </AccountGroup>
-
-      <div className="mt-8 flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate text-[11px] text-ink-soft">
-          Signed in as <span className="font-bold">{email}</span>
-        </p>
         <form action={signOut}>
-          <button
-            type="submit"
-            className="text-[11px] font-bold uppercase tracking-wide underline decoration-2 underline-offset-2"
-          >
-            Sign out
+          <button type="submit" className={rowClass}>
+            <RowBody icon={<LogOutIcon className="h-5 w-5" />} title="Sign out" subtitle={email} trailing={<span />} />
           </button>
         </form>
-      </div>
+      </AccountGroup>
     </div>
   );
 }
