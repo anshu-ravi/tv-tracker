@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { createRetryFetch } from "./retryFetch";
 
 // Server-side Supabase client (Server Components, Route Handlers, Server Actions).
 // Reads/writes the auth cookies via Next's async cookie store.
@@ -10,6 +11,8 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // See docs/build-logs/decisions.md, "Fresh-token 401s".
+      global: { fetch: createRetryFetch() },
       cookies: {
         getAll() {
           return cookieStore.getAll();
