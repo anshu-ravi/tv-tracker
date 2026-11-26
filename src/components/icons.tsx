@@ -20,23 +20,6 @@ export function TagIcon({ className }: { className?: string }) {
   );
 }
 
-export function BookmarkPlusIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4.5L5 21V4.5a1 1 0 0 1 1-1z" />
-      <path d="M9.5 8.5h5M12 6v5" />
-    </svg>
-  );
-}
-
 export function HeartIcon({ className, filled }: { className?: string; filled?: boolean }) {
   return (
     <svg
@@ -157,5 +140,92 @@ export function UserIcon({ className }: { className?: string }) {
       <circle cx="12" cy="8" r="3.75" />
       <path d="M4.5 20c1.2-4 4.2-6 7.5-6s6.3 2 7.5 6" />
     </svg>
+  );
+}
+
+// Status, list and overflow icons for the title page action row.
+
+function StrokeIcon({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function PlusIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </StrokeIcon>
+  );
+}
+
+export function ClockIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </StrokeIcon>
+  );
+}
+
+export function PlayIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M7 4.5v15a.8.8 0 0 0 1.2.7l12-7.5a.8.8 0 0 0 0-1.4l-12-7.5A.8.8 0 0 0 7 4.5z" />
+    </svg>
+  );
+}
+
+export function BanIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m6 6 12 12" />
+    </StrokeIcon>
+  );
+}
+
+export function ListPlusIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="M4 6h12M4 11h12M4 16h7" />
+      <path d="M18 14v6M15 17h6" />
+    </StrokeIcon>
+  );
+}
+
+export function DotsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <circle cx="5" cy="12" r="2.2" />
+      <circle cx="12" cy="12" r="2.2" />
+      <circle cx="19" cy="12" r="2.2" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="m6 9 6 6 6-6" />
+    </StrokeIcon>
+  );
+}
+
+export function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="m9 6 6 6-6 6" />
+    </StrokeIcon>
   );
 }
