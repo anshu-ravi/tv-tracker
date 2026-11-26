@@ -1,23 +1,20 @@
 import { SkeletonLine } from "@/components/Skeleton";
+import { StatsStripFallback } from "@/components/account/StatsStrip";
 
-// Matches AccountPage's layout: heading, profile card, sign-out row, refresh
-// button, stats link.
+// Matches AccountPage's layout: profile header, stats strip, two row groups.
 export default function AccountLoading() {
   return (
     <div className="px-4 py-6">
-      <h1 className="display mb-4 text-3xl">Account</h1>
-
-      <div className="card-bold flex items-center gap-3 p-4">
-        <div className="h-14 w-14 shrink-0 animate-pulse rounded-none border-[3px] border-ink bg-panel" />
-        <div className="min-w-0 flex-1 flex flex-col gap-2">
-          <SkeletonLine className="h-3 w-2/5" />
-          <SkeletonLine className="h-2.5 w-3/5" />
+      <div className="flex items-center gap-4">
+        <div className="h-16 w-16 shrink-0 animate-pulse border-[3px] border-ink bg-panel" />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <SkeletonLine className="h-5 w-1/2" />
+          <SkeletonLine className="h-2.5 w-1/4" />
         </div>
       </div>
-
-      <div className="card-bold mt-3 h-16 animate-pulse p-4" />
-      <div className="card-bold mt-3 h-14 animate-pulse p-4" />
-      <div className="card-bold mt-3 h-14 animate-pulse bg-acid p-4" />
+      <StatsStripFallback />
+      <div className="mt-11 h-[200px] animate-pulse border-2 border-ink bg-panel" />
+      <div className="mt-11 h-[134px] animate-pulse border-2 border-ink bg-panel" />
     </div>
   );
 }
