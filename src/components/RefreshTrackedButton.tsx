@@ -3,44 +3,30 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshIcon } from "@/components/icons";
-import LastRefreshedTag, {
-  type LastRefreshedRunSummary,
-} from "@/components/LastRefreshedTag";
+import { RowBody, rowClass } from "@/components/account/AccountList";
 
-interface RefreshOutcome {
-  titleId: string;
-  ok: boolean;
-  title?: string;
-  error?: string;
+export interface LastRefreshRun {
+  finishedAt: string;
+  errorCount: number;
 }
 
-interface RefreshTrackedButtonProps {
-  lastRunningRun: LastRefreshedRunSummary | null;
-  lastAllRun: LastRefreshedRunSummary | null;
+function formatRun(run: LastRefreshRun): string {
+  const when = new Date(run.finishedAt)
+    .toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+    .replace(" at ", ", ");
+  return run.errorCount > 0 ? `Last run ${when} · ${run.errorCount} failed` : `Last run ${when}`;
 }
 
-// "Refresh all tracked shows" — re-fetches every tracked title (watching,
-// watchlist, completed, dnf) from its provider and re-upserts titles +
-// episodes. Completed shows are included deliberately: a completed show can
-// resume airing.
-// Fixes catalog rows left incomplete by the one-time Trakt import (it only
-// wrote episodes the user had already watched, so unwatched seasons are
-// sometimes missing entirely). Can take a while for a large library, so the
-// button disables itself and reports a summary rather than failing silently.
-export default function RefreshTrackedButton({
-  lastRunningRun,
-  lastAllRun,
-}: RefreshTrackedButtonProps) {
+// Settings row that re-fetches every tracked title from TMDB; the subtitle shows the latest cron run.
+export default function RefreshTrackedButton({ lastRun }: { lastRun: LastRefreshRun | null }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   async function onClick() {
     if (running) return;
     setRunning(true);
-    setSummary(null);
-    setError(null);
+    setMessage(null);
     try {
       const res = await fetch("/api/titles/refresh", {
         method: "POST",
@@ -51,49 +37,32 @@ export default function RefreshTrackedButton({
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || "Refresh failed");
       }
-      const data = (await res.json()) as {
-        results: RefreshOutcome[];
-        refreshed: number;
-        failed: number;
-      };
-      setSummary(
+      const data = (await res.json()) as { refreshed: number; failed: number };
+      setMessage(
         data.failed > 0
-          ? `Refreshed ${data.refreshed}, failed ${data.failed}.`
-          : `Refreshed ${data.refreshed} title${data.refreshed === 1 ? "" : "s"}.`,
+          ? `Refreshed ${data.refreshed}, ${data.failed} failed`
+          : `Refreshed ${data.refreshed} title${data.refreshed === 1 ? "" : "s"}`,
       );
       router.refresh();
     } catch {
-      setError("Couldn't refresh — try again.");
+      setMessage("Couldn't refresh — try again");
     } finally {
       setRunning(false);
     }
   }
 
+  const subtitle = running
+    ? "Refreshing — this can take a bit…"
+    : (message ?? (lastRun ? formatRun(lastRun) : "Not refreshed yet"));
+
   return (
-    <div className="card-bold mt-3 flex flex-col gap-2 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-bold uppercase tracking-wide">Refresh tracked shows</p>
-          <p className="text-[11px] text-ink-soft">
-            Re-fetch every tracked title from TMDB.
-          </p>
-          <div className="mt-1">
-            <LastRefreshedTag runningRun={lastRunningRun} allRun={lastAllRun} />
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={running}
-          aria-label="Refresh all tracked shows"
-          className="hard-shadow-sm flex h-11 w-11 shrink-0 items-center justify-center border-[3px] border-ink bg-paper transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
-        >
-          <RefreshIcon className={`h-5 w-5 ${running ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-      {running && <p className="text-[11px] text-ink-soft">Refreshing — this can take a bit…</p>}
-      {summary && <p className="text-[11px] text-ink-soft">{summary}</p>}
-      {error && <p className="text-[11px] text-ink-soft">{error}</p>}
-    </div>
+    <button type="button" onClick={onClick} disabled={running} className={`${rowClass} disabled:opacity-70`}>
+      <RowBody
+        icon={<RefreshIcon className={`h-5 w-5 ${running ? "animate-spin" : ""}`} />}
+        title="Refresh data"
+        subtitle={<span suppressHydrationWarning>{subtitle}</span>}
+        trailing={<span />}
+      />
+    </button>
   );
 }

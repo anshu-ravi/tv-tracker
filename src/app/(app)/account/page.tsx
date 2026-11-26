@@ -1,193 +1,121 @@
 import Link from "next/link";
-import Image from "next/image";
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
-import ProfileEditor from "@/components/ProfileEditor";
-import RefreshTrackedButton from "@/components/RefreshTrackedButton";
-import { type LastRefreshedRunSummary } from "@/components/LastRefreshedTag";
+import ProfileHeader from "@/components/ProfileHeader";
+import RefreshTrackedButton, { type LastRefreshRun } from "@/components/RefreshTrackedButton";
+import StatsStrip, { StatsStripFallback } from "@/components/account/StatsStrip";
+import StreamingSubtitle from "@/components/account/StreamingSubtitle";
+import { AccountGroup, AccountRow } from "@/components/account/AccountList";
+import { CardsIcon, StarIcon, TvIcon, UsersIcon } from "@/components/icons";
+import { parseWatchSettings } from "@/lib/watchSettings";
 
-interface RefreshRunRow {
-  finished_at: string;
-  error_count: number;
-}
-
-function toSummary(row: RefreshRunRow | null): LastRefreshedRunSummary | null {
-  return row ? { finishedAt: row.finished_at, errorCount: row.error_count } : null;
-}
-
-// Account screen — profile (display name + avatar, stored in Supabase Auth
-// user_metadata) plus identity + sign out, moved here from the app-shell
-// header. Future home for per-user stats (shows tracked, episodes watched).
+// Account tab: profile, headline stats, and links to the per-user sub-pages.
 export default async function AccountPage() {
   const supabase = await createClient();
-  // getClaims() verifies the JWT locally against the cached JWKS instead of
-  // calling out to the Auth server (see src/lib/supabase/middleware.ts) --
-  // user_metadata and email are standard GoTrue access token claims and
-  // this project has no custom access token hook that would strip them.
+  // getClaims() verifies the JWT locally; user_metadata and email are standard claims.
   const { data: claimsData } = await supabase.auth.getClaims();
   const claims = claimsData?.claims;
-
+  const userId = claims?.sub ?? "";
+  const email: string = claims?.email ?? "";
   const displayName: string = claims?.user_metadata?.display_name ?? "";
   const avatarUrl: string | null = claims?.user_metadata?.avatar_url ?? null;
-  const initial = (displayName || claims?.email || "?").charAt(0).toUpperCase();
+  const watchSettings = parseWatchSettings(claims?.user_metadata);
 
-  // Most recent run per scope (supabase/functions/refresh-air-dates), so the
-  // owner can tell at a glance whether both the nightly ("running") and
-  // weekly ("all") cron jobs are actually running — see
-  // supabase/migrations/*_refresh_runs.sql. Two schedules means one "last
-  // refreshed" reading would be ambiguous, so each scope is fetched and
-  // shown separately.
-  const [
-    { data: latestRunningRun, error: latestRunningRunError },
-    { data: latestAllRun, error: latestAllRunError },
-    { count: pendingResolveCount, error: pendingResolveError },
-    { count: friendRequestCount, error: friendRequestError },
-  ] = await Promise.all([
+  const [lastRunRes, resolveRes, requestRes, ratingsRes, friendsRes, profileRes] = await Promise.all([
     supabase
       .from("refresh_runs")
       .select("finished_at, error_count")
-      .eq("scope", "running")
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from("refresh_runs")
-      .select("finished_at, error_count")
-      .eq("scope", "all")
-      .order("started_at", { ascending: false })
+      .order("finished_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase
       .from("user_titles")
       .select("id", { count: "exact", head: true })
       .not("pending_season_check", "is", null),
-    supabase
-      .from("friend_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_id", claims?.sub ?? ""),
+    supabase.from("friend_requests").select("id", { count: "exact", head: true }).eq("recipient_id", userId),
+    supabase.from("user_titles").select("rating").not("rating", "is", null),
+    supabase.from("friendships").select("user_a", { count: "exact", head: true }),
+    supabase.from("profiles").select("handle").eq("id", userId).maybeSingle(),
   ]);
 
-  if (latestRunningRunError) throw latestRunningRunError;
-  if (latestAllRunError) throw latestAllRunError;
-  if (pendingResolveError) throw pendingResolveError;
-  if (friendRequestError) throw friendRequestError;
+  for (const res of [lastRunRes, resolveRes, requestRes, ratingsRes, friendsRes, profileRes]) {
+    if (res.error) throw res.error;
+  }
 
-  const lastRunningRun = toSummary(latestRunningRun as RefreshRunRow | null);
-  const lastAllRun = toSummary(latestAllRun as RefreshRunRow | null);
+  const lastRunRow = lastRunRes.data as { finished_at: string; error_count: number } | null;
+  const lastRun: LastRefreshRun | null = lastRunRow
+    ? { finishedAt: lastRunRow.finished_at, errorCount: lastRunRow.error_count }
+    : null;
+  const pendingResolve = resolveRes.count ?? 0;
+  const friendRequests = requestRes.count ?? 0;
+  const friendCount = friendsRes.count ?? 0;
+  const handle = (profileRes.data as { handle: string } | null)?.handle ?? null;
+
+  const ratings = ((ratingsRes.data ?? []) as { rating: number | string }[]).map((r) => Number(r.rating));
+  const ratingsSubtitle = ratings.length
+    ? `${ratings.length} rated · avg ${(ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)}`
+    : "Nothing rated yet";
 
   return (
     <div className="px-4 py-6">
-      <h1 className="display mb-4 text-3xl">Account</h1>
+      <ProfileHeader displayName={displayName} handle={handle} avatarUrl={avatarUrl} email={email} />
 
-      <div className="card-bold flex items-center gap-3 p-4">
-        {avatarUrl ? (
-          <div className="relative h-14 w-14 shrink-0 overflow-hidden border-[3px] border-ink bg-panel">
-            <Image src={avatarUrl} alt="Profile photo" fill sizes="56px" className="object-cover" />
-          </div>
-        ) : (
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center border-[3px] border-ink bg-acid">
-            <span className="display text-xl">{initial}</span>
-          </div>
-        )}
-        <div className="min-w-0">
-          {displayName ? (
-            <p className="truncate text-sm font-bold">{displayName}</p>
-          ) : (
-            <p className="truncate text-sm font-bold text-ink-soft">No display name set</p>
-          )}
-          <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-soft">
-            {claims?.email}
-          </p>
-        </div>
-      </div>
+      <Suspense fallback={<StatsStripFallback />}>
+        <StatsStrip />
+      </Suspense>
 
-      {claims && (
-        <ProfileEditor
-          initialDisplayName={displayName}
-          initialAvatarUrl={avatarUrl}
-        />
+      {pendingResolve > 0 && (
+        <Link
+          href="/account/resolve"
+          className="mt-4 flex items-center justify-between gap-3 border-[3px] border-ink bg-ink px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-paper"
+        >
+          <span>
+            {pendingResolve} title{pendingResolve === 1 ? "" : "s"} to resolve
+          </span>
+          <span className="text-acid">→</span>
+        </Link>
       )}
 
-      <div className="card-bold mt-3 flex items-center justify-between gap-3 p-4">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">
-            Signed in as
-          </p>
-          <p className="truncate text-sm font-bold">{claims?.email}</p>
-        </div>
+      <AccountGroup label="You">
+        <AccountRow href="/account/ratings" icon={<StarIcon className="h-5 w-5" />} title="Your ratings" subtitle={ratingsSubtitle} />
+        <AccountRow href="/account/rate" icon={<CardsIcon className="h-5 w-5" />} title="Rate titles" subtitle="Quick-fire your unrated titles" />
+        <AccountRow
+          href="/account/friends"
+          icon={<UsersIcon className="h-5 w-5" />}
+          title="Friends"
+          subtitle={friendCount === 0 ? "Add a friend" : `${friendCount} friend${friendCount === 1 ? "" : "s"}`}
+          badge={friendRequests}
+        />
+      </AccountGroup>
+
+      <AccountGroup label="Settings">
+        <AccountRow
+          href="/account/streaming"
+          icon={<TvIcon className="h-5 w-5" />}
+          title="Streaming"
+          subtitle={
+            <Suspense fallback="…">
+              <StreamingSubtitle settings={watchSettings} />
+            </Suspense>
+          }
+        />
+        <RefreshTrackedButton lastRun={lastRun} />
+      </AccountGroup>
+
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-[11px] text-ink-soft">
+          Signed in as <span className="font-bold">{email}</span>
+        </p>
         <form action={signOut}>
           <button
             type="submit"
-            className="hard-shadow-sm border-[3px] border-ink bg-paper px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-ink transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+            className="text-[11px] font-bold uppercase tracking-wide underline decoration-2 underline-offset-2"
           >
             Sign out
           </button>
         </form>
       </div>
-
-      <RefreshTrackedButton lastRunningRun={lastRunningRun} lastAllRun={lastAllRun} />
-
-      {(pendingResolveCount ?? 0) > 0 && (
-        <Link
-          href="/account/resolve"
-          className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-        >
-          <p className="text-sm font-bold uppercase tracking-wide">Resolve Titles</p>
-          <span className="flex items-center gap-2">
-            <span className="border-[3px] border-ink bg-acid px-2 py-0.5 text-xs font-bold">
-              {pendingResolveCount}
-            </span>
-            <span className="display text-lg">→</span>
-          </span>
-        </Link>
-      )}
-
-      <Link
-        href="/account/friends"
-        className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-      >
-        <p className="text-sm font-bold uppercase tracking-wide">Friends</p>
-        <span className="flex items-center gap-2">
-          {(friendRequestCount ?? 0) > 0 && (
-            <span className="border-[3px] border-ink bg-acid px-2 py-0.5 text-xs font-bold">
-              {friendRequestCount}
-            </span>
-          )}
-          <span className="display text-lg">→</span>
-        </span>
-      </Link>
-
-      <Link
-        href="/account/rate"
-        className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-      >
-        <p className="text-sm font-bold uppercase tracking-wide">Rate Your Titles</p>
-        <span className="display text-lg">→</span>
-      </Link>
-
-      <Link
-        href="/account/streaming"
-        className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-      >
-        <p className="text-sm font-bold uppercase tracking-wide">Streaming Services</p>
-        <span className="display text-lg">→</span>
-      </Link>
-
-      <Link
-        href="/account/ratings"
-        className="card-bold mt-3 flex items-center justify-between gap-3 p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-      >
-        <p className="text-sm font-bold uppercase tracking-wide">Your Ratings</p>
-        <span className="display text-lg">→</span>
-      </Link>
-
-      <Link
-        href="/account/stats"
-        className="card-bold mt-3 flex items-center justify-between gap-3 bg-acid p-4 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-      >
-        <p className="text-sm font-bold uppercase tracking-wide">View Your Stats</p>
-        <span className="display text-lg">→</span>
-      </Link>
     </div>
   );
 }
