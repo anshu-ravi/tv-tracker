@@ -1,23 +1,11 @@
 import Link from "next/link";
-import ProviderLogo from "@/components/ProviderLogo";
+import ProvidersCell from "@/components/ProvidersCell";
 import { StripCell } from "@/components/RatingsStrip";
 import { getTitleStreamingProviders } from "@/lib/tmdb";
 import { splitByMine, type WatchProvider, type WatchSettings } from "@/lib/watchSettings";
 import type { MediaType } from "@/lib/types";
 
 const quiet = "text-[11px] font-bold uppercase leading-tight text-ink-soft";
-
-function FirstLogo({ providers }: { providers: WatchProvider[] }) {
-  const [first] = providers;
-  return (
-    <>
-      <span title={providers.map((p) => p.name).join(", ")}>
-        <ProviderLogo provider={first} size={22} />
-      </span>
-      {providers.length > 1 && <span className="text-xs">+{providers.length - 1}</span>}
-    </>
-  );
-}
 
 export function WhereToWatchFallback() {
   return (
@@ -66,17 +54,7 @@ export default async function WhereToWatch({
   const hasPicks = settings.providerIds.length > 0;
   const { mine, others } = splitByMine(providers, settings.providerIds);
 
-  if (hasPicks && mine.length === 0) {
-    return (
-      <StripCell label="Not on yours">
-        <FirstLogo providers={others} />
-      </StripCell>
-    );
-  }
-
-  return (
-    <StripCell label="On">
-      <FirstLogo providers={hasPicks ? mine : providers} />
-    </StripCell>
-  );
+  if (!hasPicks) return <ProvidersCell label="On" shown={providers} mine={[]} others={providers} />;
+  if (mine.length === 0) return <ProvidersCell label="Not on yours" shown={others} mine={[]} others={others} />;
+  return <ProvidersCell label="On" shown={mine} mine={mine} others={others} />;
 }
