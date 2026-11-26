@@ -1,14 +1,8 @@
 import type { UserStats } from "@/lib/stats";
+import { AccountGroup } from "@/components/account/AccountList";
+import { StripCell } from "@/components/RatingsStrip";
 
-// Three-segment horizontal bar comparing TV / Anime / Movies. The split is
-// computed from episode counts (movies count as 1 "episode" each, via the
-// synthetic per-movie row -- see byMediaType.movie.count) since episodes are
-// the app's primary unit of progress. The legend shows whole-number
-// percentages using "largest remainder" rounding: floor every share, then
-// hand the leftover point(s) to whichever share(s) have the largest
-// fractional remainder, in that order. Sums to round(100 * sum(shares)) --
-// 100 for the well-formed case of shares that sum to 1, and 0 for an
-// all-zero input -- rather than assuming the input always sums to 1.
+// Largest-remainder rounding: whole-number percentages that sum to round(100 * sum(shares)).
 export function roundSharesToSum100(shares: number[]): number[] {
   const raw = shares.map((s) => s * 100);
   const floors = raw.map((r) => Math.floor(r));
@@ -29,41 +23,49 @@ export function roundSharesToSum100(shares: number[]): number[] {
 }
 
 const SEGMENTS = [
-  { key: "tv", label: "TV", swatch: "bg-acid" },
-  { key: "anime", label: "Anime", swatch: "bg-panel" },
+  { key: "tv", label: "TV", swatch: "bg-ink" },
+  { key: "anime", label: "Anime", swatch: "bg-acid" },
   { key: "movie", label: "Movies", swatch: "bg-dnf" },
 ] as const;
 
-export default function TvVsAnime({ stats }: { stats: UserStats }) {
+// Smallest visible width for a non-zero segment, so a 1% share still shows.
+const MIN_SEGMENT_PCT = 4;
+
+// Where watch time went, split by hours across TV, anime and movies.
+export default function MediaMix({ stats }: { stats: UserStats }) {
   const { tv, anime, movie } = stats.byMediaType;
-  const counts = [tv.episodes, anime.episodes, movie.count];
-  const total = counts.reduce((a, b) => a + b, 0);
-  const shares = total > 0 ? counts.map((c) => c / total) : [0, 0, 0];
-  const pcts = total > 0 ? roundSharesToSum100(shares) : [0, 0, 0];
+  const hours = [tv.hours, anime.hours, movie.hours];
+  const total = hours.reduce((a, b) => a + b, 0);
+  if (total === 0) return null;
+
+  const pcts = roundSharesToSum100(hours.map((h) => h / total));
+  const widths = hours.map((h) => (h > 0 ? Math.max((h / total) * 100, MIN_SEGMENT_PCT) : 0));
 
   return (
-    <div className="card-bold p-4">
-      <h2 className="text-xs font-bold uppercase tracking-wide text-ink-soft">TV vs Anime vs Movies</h2>
-
-      {total === 0 ? (
-        <p className="mt-3 text-sm text-ink-soft">Nothing watched yet.</p>
-      ) : (
-        <>
-          <div className="mt-3 flex h-6 w-full overflow-hidden border-[3px] border-ink">
-            {SEGMENTS.map((seg, i) => (
-              <div key={seg.key} className={seg.swatch} style={{ width: `${shares[i] * 100}%` }} />
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] font-bold uppercase tracking-wide">
-            {SEGMENTS.map((seg, i) => (
-              <span key={seg.key}>
-                <span className={`mr-1 inline-block h-2.5 w-2.5 border border-ink ${seg.swatch} align-middle`} />
-                {seg.label} — {pcts[i]}%
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    <AccountGroup label="Where your time went">
+      <div className="p-3">
+        <div className="flex h-5 w-full divide-x-2 divide-ink overflow-hidden border-2 border-ink">
+          {SEGMENTS.map((seg, i) =>
+            widths[i] > 0 ? (
+              <div key={seg.key} className={seg.swatch} style={{ flexGrow: widths[i], flexBasis: 0 }} />
+            ) : null,
+          )}
+        </div>
+      </div>
+      <div className="flex divide-x-2 divide-ink">
+        {SEGMENTS.map((seg, i) => (
+          <StripCell
+            key={seg.key}
+            label={seg.label}
+          >
+            <span className={`inline-block h-3 w-3 shrink-0 border-2 border-ink ${seg.swatch}`} />
+            {pcts[i]}%
+            <span className="text-[11px] font-normal text-ink-soft">
+              {Math.round(hours[i]).toLocaleString()}h
+            </span>
+          </StripCell>
+        ))}
+      </div>
+    </AccountGroup>
   );
 }
