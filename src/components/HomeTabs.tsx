@@ -148,10 +148,12 @@ export default function HomeTabs({
           {thisWeek.length > 0 && (
             <section>
               <h2 className={sectionLabel}>This week</h2>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-                {thisWeek.map((item) => (
-                  <UpcomingTile key={item.titleId} item={item} />
-                ))}
+              <div className="-mx-4 overflow-x-auto px-4 pb-1">
+                <div className="flex w-max snap-x snap-mandatory gap-3">
+                  {thisWeek.map((item) => (
+                    <UpcomingTile key={item.titleId} item={item} />
+                  ))}
+                </div>
               </div>
             </section>
           )}
