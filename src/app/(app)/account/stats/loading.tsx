@@ -1,28 +1,20 @@
 import BackButton from "@/components/BackButton";
 import { SkeletonLine } from "@/components/Skeleton";
 
-// Matches StatsPage's layout: back button, heading, then a stack of stat
-// panel cards (hero tiles, tv-vs-anime, top shows, by-year, status
-// distribution, fun stats) — each rendered here as one generic pulsing
-// card-bold block since the real panels vary in internal shape.
+// Mirrors StatsPage: hero strip, then labelled 2px groups.
 export default function StatsLoading() {
   return (
-    <div className="mx-auto max-w-md px-4 py-6">
+    <div className="mx-auto max-w-md animate-pulse px-4 py-6">
       <BackButton fallbackHref="/account" />
       <h1 className="display mb-4 mt-4 text-3xl">Your Stats</h1>
 
-      <div className="space-y-4">
-        <div className="card-bold grid animate-pulse grid-cols-2 gap-3 p-4">
-          <SkeletonLine className="h-14 w-full" />
-          <SkeletonLine className="h-14 w-full" />
-          <SkeletonLine className="h-14 w-full" />
-          <SkeletonLine className="h-14 w-full" />
+      <div className="h-[62px] border-2 border-ink bg-panel" />
+      {["h-[92px]", "h-[52px]", "h-[200px]", "h-[52px]"].map((h, i) => (
+        <div key={i} className="mt-6">
+          <SkeletonLine className="mb-2 h-3 w-24" />
+          <div className={`${h} border-2 border-ink bg-paper`} />
         </div>
-        <div className="card-bold h-24 animate-pulse p-4" />
-        <div className="card-bold h-40 animate-pulse p-4" />
-        <div className="card-bold h-32 animate-pulse p-4" />
-        <div className="card-bold h-28 animate-pulse p-4" />
-      </div>
+      ))}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roundSharesToSum100 } from "@/components/stats/TvVsAnime";
+import { roundSharesToSum100 } from "@/components/stats/MediaMix";
 
 // Largest-remainder rounding for the N-segment stats bar (TV/Anime/Movies).
 // Must always sum to exactly 100, even when plain independent rounding
