@@ -48,6 +48,10 @@ Same treatment as the title page: ten identical heavy cards, an always-open prof
 
 The 108-logo grid buried a handful of picks and its brand colours fought the acid selection. It is now a list: picked services first (remove with ×), then a searchable add list showing TMDB's top 12 for the country with "Show all". Names ending in "Channel" (Amazon/Apple add-on bundles, about 40% of Spain's list) only appear in search. Every tap autosaves through a serialised queue that sends only the newest state and rolls back on failure, matching the instant toggles elsewhere in the app.
 
+## Stats page declutter
+
+Eleven heavy cards for a read-only page, acid on every bar, and the same fact told three times (Days tile, "days of your life" fact, Hours ÷ 24). Now one 2px hero strip with Hours as the single acid fact (days as its sub-label), then 2px groups: where your time went, library, ratings, history. Top Shows by time and "Longest series conquered" were removed rather than restyled: both rank by episode count, so long-runners always win and the list says little about taste. The media split moved from episodes to hours for the same reason (each movie counted as one episode), with three distinct fills (ink, acid, grey) and a minimum segment width so a small share stays visible. By Year sits in a bottom sheet behind one row because the bulk import makes it one spike; the Top 10 carousel became a Top rated row linking to `/account/ratings`, which already shows the full ranking.
+
 ## Closed, don't reopen without a new reason
 
 - **Avatar icon picker.** A bundled-SVG picker replacing photo upload was built and rejected on sight. Photo upload stays.
