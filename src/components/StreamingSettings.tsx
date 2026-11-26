@@ -146,18 +146,20 @@ export default function StreamingSettings({
             {loading ? (
               <p className="text-sm text-ink-soft">Loading services…</p>
             ) : mine.length > 0 ? (
-              <ul className={group}>
+              <ul className="flex flex-wrap gap-2">
                 {mine.map((p) => (
-                  <li key={p.id} className={row}>
-                    <ProviderLogo provider={p} size={28} />
-                    <span className="min-w-0 flex-1 truncate text-sm font-bold">{p.name}</span>
+                  <li key={p.id}>
                     <button
                       type="button"
                       onClick={() => toggle(p.id)}
                       aria-label={`Remove ${p.name}`}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center text-lg font-bold leading-none text-ink-soft"
+                      className="flex max-w-full items-center gap-2 border-2 border-ink bg-paper py-1 pl-1 pr-2 active:bg-panel"
                     >
-                      ×
+                      <ProviderLogo provider={p} size={24} />
+                      <span className="truncate text-xs font-bold">{p.name}</span>
+                      <span aria-hidden="true" className="text-sm font-bold leading-none text-ink-soft">
+                        ×
+                      </span>
                     </button>
                   </li>
                 ))}
