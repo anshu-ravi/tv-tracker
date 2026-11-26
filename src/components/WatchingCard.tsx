@@ -212,10 +212,10 @@ export default function WatchingCard({
   }
 
   return (
-    <div className="flex items-center gap-3 border-2 border-ink bg-paper p-2.5">
+    <div className="card-bold flex items-center gap-3 p-2.5">
       <Link
         href={`/title/${data.titleId}`}
-        className="relative h-[114px] w-[76px] shrink-0 overflow-hidden border-2 border-ink bg-panel"
+        className="relative h-[114px] w-[76px] shrink-0 overflow-hidden rounded-md border-2 border-ink bg-panel"
       >
         {data.posterUrl ? (
           <Image
