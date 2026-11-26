@@ -42,8 +42,8 @@ export function SkeletonPosterGrid({ count = 6 }: { count?: number }) {
 // One Up Next card placeholder, matching WatchingCard: big poster, episode lines, round mark button.
 export function SkeletonWatchingCard() {
   return (
-    <div className="flex items-center gap-3 border-2 border-ink p-2.5">
-      <div className="h-[114px] w-[76px] shrink-0 animate-pulse border-2 border-ink bg-panel" />
+    <div className="card-bold flex items-center gap-3 p-2.5">
+      <div className="h-[114px] w-[76px] shrink-0 animate-pulse rounded-md border-2 border-ink bg-panel" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <SkeletonLine className="h-2.5 w-1/3" />
         <SkeletonLine className="h-4 w-3/4" />

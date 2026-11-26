@@ -23,14 +23,14 @@ type Tab = "watching" | "upcoming";
 
 const sectionLabel = "mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-soft";
 
-function UpcomingGroup({ label, items, highlightFirst }: { label: string; items: UpcomingItem[]; highlightFirst: boolean }) {
+function UpcomingGroup({ label, items }: { label: string; items: UpcomingItem[] }) {
   if (items.length === 0) return null;
   return (
     <section>
       <h2 className={sectionLabel}>{label}</h2>
       <div className="divide-y-2 divide-ink border-2 border-ink bg-paper">
-        {items.map((item, i) => (
-          <UpcomingCard key={item.titleId} item={item} highlight={highlightFirst && i === 0} />
+        {items.map((item) => (
+          <UpcomingCard key={item.titleId} item={item} />
         ))}
       </div>
     </section>
@@ -145,8 +145,8 @@ export default function HomeTabs({
         </p>
       ) : (
         <div className="flex flex-col gap-6">
-          <UpcomingGroup label="This week" items={thisWeek} highlightFirst />
-          <UpcomingGroup label="Later" items={later} highlightFirst={thisWeek.length === 0} />
+          <UpcomingGroup label="This week" items={thisWeek} />
+          <UpcomingGroup label="Later" items={later} />
         </div>
       )}
 

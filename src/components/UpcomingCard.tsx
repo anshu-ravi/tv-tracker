@@ -12,21 +12,23 @@ const MEDIA_TYPE_LABEL: Record<UpcomingItem["mediaType"], string> = {
 };
 
 // One Upcoming row: thumb, title, episode + media type, and the air date on the right.
-export default function UpcomingCard({ item, highlight = false }: { item: UpcomingItem; highlight?: boolean }) {
+export default function UpcomingCard({ item }: { item: UpcomingItem }) {
+  // Acid marks anything airing today or tomorrow, so equally imminent titles look equal.
+  const highlight = item.daysUntil <= 1;
   const date = upcomingDateLabel(item.airDate, item.daysUntil);
   const subtitle = [item.episodeLabel ? compactEpisodeCode(item.episodeLabel) : null, MEDIA_TYPE_LABEL[item.mediaType]]
     .filter(Boolean)
     .join(" · ");
 
   return (
-    <Link href={`/title/${item.titleId}`} className={`${rowClass} py-2.5`}>
-      <span className="relative h-[54px] w-9 shrink-0 overflow-hidden border-2 border-ink bg-panel">
+    <Link href={`/title/${item.titleId}`} className={rowClass}>
+      <span className="relative h-24 w-16 shrink-0 overflow-hidden rounded-md border-2 border-ink bg-panel">
         {item.posterUrl ? (
           <Image
-            src={buildTmdbImageUrl(item.posterUrl, 92)}
+            src={buildTmdbImageUrl(item.posterUrl, 128)}
             alt=""
             fill
-            sizes="36px"
+            sizes="64px"
             className="object-cover"
             unoptimized
           />
