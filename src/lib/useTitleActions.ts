@@ -35,6 +35,12 @@ export function useTitleActions({
 
   const [resolvedTitleId, setResolvedTitleId] = useState<string | undefined>(titleId);
   const [status, setStatus] = useState<WatchStatus | undefined>(initialStatus);
+  // Adopt a server-side status change (e.g. a DB trigger after an episode tick) once router.refresh() delivers it.
+  const [seenInitialStatus, setSeenInitialStatus] = useState(initialStatus);
+  if (initialStatus !== seenInitialStatus) {
+    setSeenInitialStatus(initialStatus);
+    setStatus(initialStatus);
+  }
   const [statusPending, setStatusPending] = useState(false);
   const [statusError, setStatusError] = useState(false);
 
