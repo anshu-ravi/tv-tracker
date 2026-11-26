@@ -40,6 +40,10 @@ Things that were tried, measured or ruled out, kept here so nobody retries them 
 
 The title header had about ten equal-weight bordered controls, an always-open rating slider that outweighed everything else, and acid green on three unrelated things, so nothing read as primary. The redesign keeps every function but ranks them: status is the one labelled acid button (icon per state, "Caught up" vs "Completed" from `is_running`), list/favorite are quiet icons, and rare fix-ups (refresh, TV/Anime correction, remove) moved into a `⋯` menu. External scores, where-to-watch and the owner's rating share one 2px strip; the rating slider lives in a bottom sheet that saves as you drag, so dismissing it never loses a value. The poster overlaps the backdrop to tie the duplicated art together. An Up next card brings the most common action (mark next episode) above the fold; it shares watched state with the episode list through `WatchedEpisodesProvider` so the two never disagree. Friends collapsed to one line with the list in a sheet. The overview is deliberately not clamped — the owner wants it shown in full.
 
+## Account page declutter
+
+Same treatment as the title page: ten identical heavy cards, an always-open profile form, and the email shown three times made the page feel like a settings dump with the interesting part (stats) last. Now a profile header with an Edit sheet (photo, name, handle), an acid stats strip loaded behind Suspense (it runs the same `get_user_stats` RPC as the Stats page), a resolve banner only when titles are pending, and two 2px groups (You, Settings) whose rows carry live subtitles. Refresh shows only the latest cron run of either scope; the daily/weekly split was dropped as rarely useful.
+
 ## Closed, don't reopen without a new reason
 
 - **Avatar icon picker.** A bundled-SVG picker replacing photo upload was built and rejected on sight. Photo upload stays.
