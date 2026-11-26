@@ -1,16 +1,25 @@
 import Link from "next/link";
+import FriendsSheetButton from "@/components/FriendsSheetButton";
 import ProfileAvatar from "@/components/ProfileAvatar";
 import { toRating } from "@/lib/friendProfile";
-import { friendStatusLabel, type FriendOnTitleRow } from "@/lib/friendsContext";
+import { friendStatusLabel, friendsSummary, type FriendOnTitleRow } from "@/lib/friendsContext";
 
-// "Friends" strip on a title page: each friend who tracks it, with their status and rating.
+// Friends tracking this title, as a one-line summary with the full list in a sheet.
 export default function FriendsOnTitle({ rows, isMovie }: { rows: FriendOnTitleRow[]; isMovie: boolean }) {
   if (rows.length === 0) return null;
+  const summary = friendsSummary(rows, isMovie);
+  const ratingNote =
+    summary.rating === null ? "" : ` · ${rows.length > 1 ? "avg " : ""}★ ${summary.rating.toFixed(1)}`;
+
+  const avatars = rows.slice(0, 3).map((row, i) => (
+    <span key={row.user_id} className={i > 0 ? "-ml-2" : ""}>
+      <ProfileAvatar profile={row} size={28} />
+    </span>
+  ));
 
   return (
-    <section className="px-4 pt-4">
-      <h2 className="display mb-2 text-lg">Friends</h2>
-      <ul className="card-bold divide-y-2 divide-ink/10 px-3">
+    <FriendsSheetButton avatars={avatars} text={`${summary.text}${ratingNote}`}>
+      <ul className="divide-y-2 divide-ink/10">
         {rows.map((row) => {
           const rating = toRating(row.rating);
           return (
@@ -24,7 +33,7 @@ export default function FriendsOnTitle({ rows, isMovie }: { rows: FriendOnTitleR
                   </p>
                 </div>
                 {rating !== null && (
-                  <span className="shrink-0 rotate-3 border-2 border-ink bg-acid px-1.5 py-0.5 text-xs font-bold">
+                  <span className="shrink-0 border-2 border-ink bg-acid px-1.5 py-0.5 text-xs font-bold">
                     ★ {rating.toFixed(1)}
                   </span>
                 )}
@@ -33,6 +42,6 @@ export default function FriendsOnTitle({ rows, isMovie }: { rows: FriendOnTitleR
           );
         })}
       </ul>
-    </section>
+    </FriendsSheetButton>
   );
 }
