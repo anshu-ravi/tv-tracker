@@ -276,3 +276,12 @@ export function CameraIcon({ className }: { className?: string }) {
     </StrokeIcon>
   );
 }
+
+export function LogOutIcon({ className }: { className?: string }) {
+  return (
+    <StrokeIcon className={className}>
+      <path d="M10 4H5v16h5" />
+      <path d="M14 8l4 4-4 4M18 12H9" />
+    </StrokeIcon>
+  );
+}
