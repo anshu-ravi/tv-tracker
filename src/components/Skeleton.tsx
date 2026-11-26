@@ -39,18 +39,18 @@ export function SkeletonPosterGrid({ count = 6 }: { count?: number }) {
   );
 }
 
-// One "Currently Watching" card placeholder, matching WatchingCard's layout:
-// poster thumb, title + progress + next-episode lines, round mark button.
+// One Up Next card placeholder, matching WatchingCard: big poster, episode lines, round mark button.
 export function SkeletonWatchingCard() {
   return (
-    <div className="card-bold flex items-start gap-3 p-3">
-      <div className="h-24 w-16 shrink-0 animate-pulse rounded-md border-[3px] border-ink bg-panel" />
-      <div className="flex min-w-0 flex-1 flex-col gap-2 self-center py-1">
+    <div className="flex items-center gap-3 border-2 border-ink p-2.5">
+      <div className="h-[114px] w-[76px] shrink-0 animate-pulse border-2 border-ink bg-panel" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <SkeletonLine className="h-2.5 w-1/3" />
         <SkeletonLine className="h-4 w-3/4" />
+        <SkeletonLine className="h-2.5 w-1/4" />
         <SkeletonLine className="h-2 w-full" />
-        <SkeletonLine className="h-2.5 w-2/3" />
       </div>
-      <div className="h-[52px] w-[52px] shrink-0 animate-pulse self-center rounded-full border-[3px] border-ink bg-panel" />
+      <div className="h-[52px] w-[52px] shrink-0 animate-pulse rounded-full border-[3px] border-ink bg-panel" />
     </div>
   );
 }

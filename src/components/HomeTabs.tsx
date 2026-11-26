@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import WatchingCard, { type WatchingCardData } from "@/components/WatchingCard";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import WatchingCard, { UNDO_MS, type HomeToast, type WatchingCardData } from "@/components/WatchingCard";
 import UpcomingCard from "@/components/UpcomingCard";
 import CatchUpCarousel from "@/components/CatchUpCarousel";
+import { THIS_WEEK_DAYS } from "@/lib/upcomingDate";
 import type { MediaType } from "@/lib/types";
 
-// One title with a known future air date — either the next episode of a
-// running show, or the premiere of a not-yet-aired watchlist title.
-// Computed server-side in the Home page from `titles`/`user_titles`.
+// A title with a known future air date: a running show's next episode or an unreleased premiere.
 export interface UpcomingItem {
   titleId: string;
   title: string;
@@ -21,14 +21,23 @@ export interface UpcomingItem {
 
 type Tab = "watching" | "upcoming";
 
-const TAB_LABEL: Record<Tab, string> = {
-  watching: "Currently Watching",
-  upcoming: "Upcoming",
-};
+const sectionLabel = "mb-2 text-[11px] font-bold uppercase tracking-wide text-ink-soft";
 
-// Home's client-side subtab switcher. Stays mounted across the router.refresh()
-// triggered by a WatchingCard mark-watched, so the active tab survives that
-// refresh instead of resetting to "Currently Watching" every time.
+function UpcomingGroup({ label, items, highlightFirst }: { label: string; items: UpcomingItem[]; highlightFirst: boolean }) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <h2 className={sectionLabel}>{label}</h2>
+      <div className="divide-y-2 divide-ink border-2 border-ink bg-paper">
+        {items.map((item, i) => (
+          <UpcomingCard key={item.titleId} item={item} highlight={highlightFirst && i === 0} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Home's Watching / Upcoming switcher. Stays mounted across router.refresh(), so the tab survives a mark.
 export default function HomeTabs({
   watching,
   upcoming,
@@ -39,61 +48,87 @@ export default function HomeTabs({
   displayName?: string;
 }) {
   const [tab, setTab] = useState<Tab>("watching");
+  const [toast, setToast] = useState<(HomeToast & { id: number }) | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Split Currently Watching into its two sub-sections, computed server-side
-  // per-card (see the Home page's `bucket` classification).
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  const notify = useCallback((next: HomeToast) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ ...next, id: Date.now() });
+    toastTimer.current = setTimeout(() => setToast(null), UNDO_MS);
+  }, []);
+
+  function undo() {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toast?.onUndo?.();
+    setToast(null);
+  }
+
   const upNext = watching.filter((card) => card.bucket === "upnext");
   const catchUp = watching.filter((card) => card.bucket === "catchup");
+  const thisWeek = upcoming.filter((item) => item.daysUntil < THIS_WEEK_DAYS);
+  const later = upcoming.filter((item) => item.daysUntil >= THIS_WEEK_DAYS);
+
+  const tabs: { key: Tab; label: string; count: number }[] = [
+    { key: "watching", label: "Watching", count: watching.length },
+    { key: "upcoming", label: "Upcoming", count: upcoming.length },
+  ];
 
   return (
-    <div className="px-4 py-6">
-      {displayName ? (
-        <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-ink-soft">
-          Hey, {displayName}
-        </p>
-      ) : null}
-      <h1 className="display mb-4 text-3xl">Home</h1>
+    <div className="px-4 py-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <h1 className="display text-2xl">Home</h1>
+        {displayName ? (
+          <p className="truncate text-[11px] font-extrabold uppercase tracking-wide text-ink-soft">
+            Hey, {displayName}
+          </p>
+        ) : null}
+      </div>
 
-      <div className="mb-5 grid grid-cols-2 border-[3px] border-ink">
-        {(Object.keys(TAB_LABEL) as Tab[]).map((key) => (
+      <div className="mb-5 mt-3 grid grid-cols-2 border-[3px] border-ink">
+        {tabs.map(({ key, label, count }) => (
           <button
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide transition-colors duration-150 ${
-              tab === key
-                ? "bg-acid text-ink"
-                : "bg-paper text-ink-soft"
+            aria-pressed={tab === key}
+            className={`px-3 py-2 text-xs font-extrabold uppercase tracking-wide transition-colors duration-150 ${
+              tab === key ? "bg-ink text-paper" : "bg-paper text-ink-soft"
             } ${key === "watching" ? "border-r-[3px] border-ink" : ""}`}
           >
-            {TAB_LABEL[key]}
+            {label} <span className={tab === key ? "text-acid" : ""}>{count}</span>
           </button>
         ))}
       </div>
 
       {tab === "watching" ? (
         watching.length === 0 ? (
-          <p className="card-bold px-4 py-8 text-center text-sm text-ink-soft">
-            Nothing in progress. Add a show from Search to get started. Shows you&rsquo;re fully
-            caught up on move to the Upcoming tab once their next episode is scheduled.
+          <p className="border-2 border-ink px-4 py-8 text-center text-sm text-ink-soft">
+            Nothing in progress. Add a show from Explore to get started. Shows you&rsquo;re fully
+            caught up on move to Upcoming once their next episode is scheduled.
           </p>
         ) : (
           <div className="flex flex-col gap-6">
             {upNext.length > 0 && (
-              <div className="flex flex-col gap-5">
-                <h2 className="stamp w-fit text-xs">Up Next</h2>
-                {upNext.map((card, index) => (
-                  // Keyed on the mutable fields, not just titleId: when a mark
-                  // triggers router.refresh() and fresh props arrive, the key
-                  // changes and React remounts the card instead of carrying over
-                  // stale optimistic local state (see WatchingCard).
-                  <WatchingCard
-                    key={`${card.titleId}:${card.watchedCount}:${card.nextUnwatchedEpisodeId ?? "none"}`}
-                    data={card}
-                    priority={index === 0}
-                  />
-                ))}
-              </div>
+              <section>
+                <h2 className={sectionLabel}>Up next</h2>
+                <div className="flex flex-col gap-3">
+                  {upNext.map((card, index) => (
+                    // Keyed on mutable fields so a refresh remounts the card and drops stale optimistic state.
+                    <WatchingCard
+                      key={`${card.titleId}:${card.watchedCount}:${card.nextUnwatchedEpisodeId ?? "none"}`}
+                      data={card}
+                      priority={index === 0}
+                      notify={notify}
+                    />
+                  ))}
+                </div>
+              </section>
             )}
 
             {catchUp.length > 0 && (
@@ -105,17 +140,42 @@ export default function HomeTabs({
           </div>
         )
       ) : upcoming.length === 0 ? (
-        <p className="card-bold px-4 py-8 text-center text-sm text-ink-soft">
-          Nothing on the horizon. Running shows and unreleased watchlist titles will appear
-          here.
+        <p className="border-2 border-ink px-4 py-8 text-center text-sm text-ink-soft">
+          Nothing on the horizon. Running shows and unreleased watchlist titles will appear here.
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {upcoming.map((item) => (
-            <UpcomingCard key={item.titleId} item={item} />
-          ))}
+        <div className="flex flex-col gap-6">
+          <UpcomingGroup label="This week" items={thisWeek} highlightFirst />
+          <UpcomingGroup label="Later" items={later} highlightFirst={thisWeek.length === 0} />
         </div>
       )}
+
+      <div className="pointer-events-none sticky bottom-3 z-20 mt-4">
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              key={toast.id}
+              role="status"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.25, ease: [0.2, 0.9, 0.25, 1] }}
+              className="pointer-events-auto flex items-center justify-between gap-3 border-[3px] border-ink bg-ink px-3 py-2 shadow-[4px_4px_0_0_rgba(199,255,62,0.9)]"
+            >
+              <span className="text-xs font-bold uppercase tracking-wide text-paper">{toast.message}</span>
+              {toast.onUndo ? (
+                <button
+                  type="button"
+                  onClick={undo}
+                  className="shrink-0 border-2 border-acid px-2 py-1 text-[11px] font-extrabold uppercase tracking-wide text-acid"
+                >
+                  Undo
+                </button>
+              ) : null}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
