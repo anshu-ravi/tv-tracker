@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import WatchingCard, { UNDO_MS, type HomeToast, type WatchingCardData } from "@/components/WatchingCard";
-import UpcomingCard from "@/components/UpcomingCard";
+import UpcomingCard, { UpcomingTile } from "@/components/UpcomingCard";
 import CatchUpCarousel from "@/components/CatchUpCarousel";
 import { THIS_WEEK_DAYS } from "@/lib/upcomingDate";
 import type { MediaType } from "@/lib/types";
@@ -145,7 +145,16 @@ export default function HomeTabs({
         </p>
       ) : (
         <div className="flex flex-col gap-6">
-          <UpcomingGroup label="This week" items={thisWeek} />
+          {thisWeek.length > 0 && (
+            <section>
+              <h2 className={sectionLabel}>This week</h2>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+                {thisWeek.map((item) => (
+                  <UpcomingTile key={item.titleId} item={item} />
+                ))}
+              </div>
+            </section>
+          )}
           <UpcomingGroup label="Later" items={later} />
         </div>
       )}
